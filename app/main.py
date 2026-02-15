@@ -24,7 +24,7 @@ app.add_middleware(
 async def root():
     """Root endpoint"""
     return {
-        "message": "Welcome to Video Trans API",
+        "message": "Welcome to AI Video Trans API",
         "version": VERSION,
         "docs": "/docs"
     }
