@@ -22,6 +22,8 @@ async def list_videos():
             "video_id": video["video_id"],
             "project_id": video["project_id"],
             "video_url": video["video_url"],
+            "transcription": video.get("transcription"),
+            "transcript_url": video.get("transcript_url"),
             "created_at": video["created_at"],
             "updated_at": video["updated_at"]
         })
@@ -34,6 +36,8 @@ async def get_video(video_id: str):
             "video_id": video["video_id"],
             "project_id": video["project_id"],
             "video_url": video["video_url"],
+            "transcription": video.get("transcription"),
+            "transcript_url": video.get("transcript_url"),
             "created_at": video["created_at"],
             "updated_at": video["updated_at"]
         }

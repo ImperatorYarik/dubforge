@@ -28,12 +28,12 @@ def release_model() -> None:
         torch.cuda.empty_cache()
 
 
-def translate_audio(audio_path: str, output_path: str) -> list:
-    logger.info(f"Translating audio: {audio_path}")
+def transcribe_audio(audio_path: str, output_path: str, translate: bool = True) -> list:
+    logger.info(f"Transcribing audio: {audio_path}")
     model = get_model()
     segments_gen, info = model.transcribe(
         audio_path,
-        task="translate",
+        task="translate" if translate else "transcribe",
         beam_size=5,
     )
     logger.info(f"Detected language '{info.language}' with probability {info.language_probability:.2f}")
@@ -46,11 +46,5 @@ def translate_audio(audio_path: str, output_path: str) -> list:
             "end": segment.end,
             "text": text,
         })
-        logger.info(f"Translated segment [{segment.start:.2f}s - {segment.end:.2f}s]: {text}")
-
-    logger.info(f"Writing transcription to {output_path}...")
-    with open(output_path, "w", encoding="utf-8") as f:
-        for result in results:
-            f.write(f"[{result['start']:.2f}s - {result['end']:.2f}s] {result['text']}\n")
-
+        logger.info(f"{'Translated' if translate else 'Transcribed'} segment [{segment.start:.2f}s - {segment.end:.2f}s]: {text}")
     return results

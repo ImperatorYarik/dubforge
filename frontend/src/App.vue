@@ -1,32 +1,33 @@
 <script setup>
-import AppHeader from '@/components/AppHeader.vue'
+import TheSidebar from '@/components/TheSidebar.vue'
 import AppToast from '@/components/AppToast.vue'
+import TopProgressBar from '@/components/TopProgressBar.vue'
 </script>
 
 <template>
-  <div class="app-layout">
-    <AppHeader />
-    <main class="main-content">
-      <RouterView />
+  <TopProgressBar />
+  <div class="shell">
+    <TheSidebar />
+    <main class="main">
+      <RouterView v-slot="{ Component }">
+        <Transition name="page" mode="out-in">
+          <component :is="Component" />
+        </Transition>
+      </RouterView>
     </main>
-    <AppToast />
   </div>
+  <AppToast />
 </template>
 
 <style>
-/* Global layout is in assets/main.css */
-.app-layout {
-  min-height: 100vh;
+#app { height: 100%; }
+.shell {
   display: flex;
-  flex-direction: column;
-  background: var(--color-bg);
+  min-height: 100vh;
 }
-
-.main-content {
+.main {
   flex: 1;
-  padding: 2rem;
-  max-width: 1100px;
-  margin: 0 auto;
-  width: 100%;
+  min-width: 0;
+  overflow-y: auto;
 }
 </style>

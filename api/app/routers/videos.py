@@ -12,9 +12,11 @@ router = APIRouter()
 
 @router.post("/upload", response_model=VideoUploadResponse)
 async def upload_video(file: UploadFile = File(...), project_id: str = "default_folder"):
-    object_name = project_id + '/video.' + file.filename.split('.')[-1]
+    video_id = await videos.add_video(project_id, video_url)
+    object_name = project_id + f'/{video_id}.' + file.filename.split('.')[-1]
+
+
     video_url = f"{storage.get_base_url()}/{object_name}"
-    await videos.add_video(project_id, video_url)
     if storage.upload_file(file, object_name):
         return VideoUploadResponse(project_id=project_id, message="Video uploaded successfully", upload_url=f"{storage.get_base_url()}/{object_name}")
     else:
@@ -25,6 +27,14 @@ async def upload_video(file: UploadFile = File(...), project_id: str = "default_
 async def list_videos():
     videos_list = await videos.list_videos()
     return videos_list
+
+
+@router.get("/{video_id}", response_model=VideoResponse)
+async def get_video(video_id: str):
+    video = await videos.get_video(video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    return video
 
 
 @router.get("/{video_id}/stream")

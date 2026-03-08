@@ -36,3 +36,7 @@ async def get_project(project_id: str):
         }
     else:
         return None
+    
+async def delete_project(project_id: str):
+    result = await projects_collection.delete_one({"project_id": project_id})
+    return result.deleted_count > 0

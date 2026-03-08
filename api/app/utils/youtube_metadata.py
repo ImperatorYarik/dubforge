@@ -20,7 +20,16 @@ async def get_youtube_metadata(url: str) -> dict:
 async def download_youtube_video(url: str, output_path: str) -> bool:
     def _download():
         try:
-            with yt_dlp.YoutubeDL({"quiet": True, "outtmpl": output_path}) as ydl:
+            ydl_opts = {
+                "quiet": True,
+                "outtmpl": output_path,
+                "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                "postprocessors": [{
+                    "key": "FFmpegVideoConvertor",
+                    "preferedformat": "mp4",
+                }],
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
             return True
         except Exception as e:

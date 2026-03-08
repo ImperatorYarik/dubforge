@@ -56,5 +56,16 @@ class Storage:
             Params={'Bucket': settings.BUCKET_NAME, 'Key': object_name},
             ExpiresIn=expires_in,
         )
+    @staticmethod
+    def delete_folder(folder_name):
+        try:
+            response = client.list_objects_v2(Bucket=settings.BUCKET_NAME, Prefix=folder_name+'/')
+            if 'Contents' in response:
+                for obj in response['Contents']:
+                    client.delete_object(Bucket=settings.BUCKET_NAME, Key=obj['Key'])
+            return True
+        except Exception as e:
+            print(f"Error deleting folder: {e}")
+            return False
 
 storage = Storage()

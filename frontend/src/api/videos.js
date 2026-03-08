@@ -4,6 +4,10 @@ export function listVideos() {
   return client.get('/videos/list_videos')
 }
 
+export function getVideo(videoId) {
+  return client.get(`/videos/${videoId}`)
+}
+
 export function uploadVideo(file, projectId) {
   const form = new FormData()
   form.append('file', file)
