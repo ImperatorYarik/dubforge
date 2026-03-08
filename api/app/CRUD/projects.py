@@ -24,3 +24,15 @@ async def list_projects():
             "updated_at": project["updated_at"]
         })
     return projects
+
+async def get_project(project_id: str):
+    project = await projects_collection.find_one({"project_id": project_id})
+    if project:
+        return {
+            "project_id": project["project_id"],
+            "metadata": project["metadata"],
+            "created_at": project["created_at"],
+            "updated_at": project["updated_at"]
+        }
+    else:
+        return None
