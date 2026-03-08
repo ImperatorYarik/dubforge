@@ -1,0 +1,7 @@
+celery
+redis
+pydantic-settings
+pydantic
+boto3
+ffmpeg-python
+faster-whisper
