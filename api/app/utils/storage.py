@@ -11,9 +11,18 @@ client = boto3.client(
 
 class Storage:
     @staticmethod
-    def upload_file(file, bucket_name, object_name):
+    def create_folder(folder_name):
         try:
-            client.upload_fileobj(file.file, bucket_name, object_name)
+            client.put_object(Bucket=settings.BUCKET_NAME, Key=(folder_name+'/'))
+            return True
+        except Exception as e:
+            print(f"Error creating folder: {e}")
+            return False
+        
+    @staticmethod
+    def upload_file(file, object_name):
+        try:
+            client.upload_fileobj(file.file, settings.BUCKET_NAME, object_name)
             return True
         except Exception as e:
             print(f"Error uploading file: {e}")
