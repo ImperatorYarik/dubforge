@@ -5,3 +5,6 @@ boto3
 yt-dlp
 motor
 pydantic-settings
+celery
+redis
+ffmpeg

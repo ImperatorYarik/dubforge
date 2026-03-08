@@ -1,17 +1,35 @@
+import os
+
 from fastapi import APIRouter
 from app.models.project import ProjectCreationResponse, ProjectResponse, ProjectListResponse
 from app.utils.storage import storage
-from app.utils.youtube_metadata import get_youtube_metadata
-from app.CRUD import projects
-
+from app.utils.youtube_metadata import get_youtube_metadata, download_youtube_video
+from app.CRUD import projects, videos
 
 router = APIRouter()
 
 @router.post("/create")
-async def create_project(youtube_url: str):
+async def create_project(youtube_url: str, download_from_youtube: bool = True):
     metadata = await get_youtube_metadata(youtube_url)
     project_id = await projects.create_project(metadata)
     storage.create_folder(project_id)
+
+    local_path = f"/tmp/{project_id}/video.mp4"
+
+    if download_from_youtube:
+        os.makedirs(f"/tmp/{project_id}", exist_ok=True)
+        await download_youtube_video(youtube_url, local_path)
+
+        object_name = f"{project_id}/video.mp4"
+        with open(local_path, "rb") as f:
+            storage.upload_file_raw(f, object_name)
+
+        video_url = f"{storage.get_base_url()}/{object_name}"
+        await videos.add_video(project_id, video_url)
+
+        return ProjectCreationResponse(project_id=project_id, message="Project created successfully", metadata=metadata)
+
+
     return ProjectCreationResponse(project_id=project_id, message="Project created successfully", metadata=metadata)
 
 @router.get("/list_projects")

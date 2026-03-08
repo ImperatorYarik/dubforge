@@ -16,3 +16,15 @@ async def get_youtube_metadata(url: str) -> dict:
             }
     
     return await run_in_threadpool(_fetch)
+
+async def download_youtube_video(url: str, output_path: str) -> bool:
+    def _download():
+        try:
+            with yt_dlp.YoutubeDL({"quiet": True, "outtmpl": output_path}) as ydl:
+                ydl.download([url])
+            return True
+        except Exception as e:
+            print(f"Error downloading video: {e}")
+            return False
+    
+    return await run_in_threadpool(_download)

@@ -27,7 +27,14 @@ class Storage:
         except Exception as e:
             print(f"Error uploading file: {e}")
             return False
-        
+    @staticmethod
+    def upload_file_raw(file_obj, object_name: str) -> bool:
+        try:
+            client.upload_fileobj(file_obj, settings.BUCKET_NAME, object_name)
+            return True
+        except Exception as e:
+            print(f"Error uploading file: {e}")
+            return False
     @staticmethod
     def create_bucket(bucket_name):
         try:
