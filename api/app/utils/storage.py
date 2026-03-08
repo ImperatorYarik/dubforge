@@ -47,5 +47,14 @@ class Storage:
     @staticmethod
     def get_base_url():
         return settings.S3_ENDPOINT + '/' + settings.BUCKET_NAME
-        
+
+    @staticmethod
+    def generate_presigned_url(object_name: str, expires_in: int = 3600) -> str:
+        """Return a presigned GET URL valid for `expires_in` seconds."""
+        return client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': settings.BUCKET_NAME, 'Key': object_name},
+            ExpiresIn=expires_in,
+        )
+
 storage = Storage()
