@@ -37,4 +37,8 @@ class Storage:
             print(f"Error creating bucket: {e}")
             return False
         
+    @staticmethod
+    def get_base_url():
+        return settings.S3_ENDPOINT + '/' + settings.BUCKET_NAME
+        
 storage = Storage()

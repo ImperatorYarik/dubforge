@@ -3,3 +3,5 @@ uvicorn
 python-multipart
 boto3
 yt-dlp
+motor
+pydantic-settings

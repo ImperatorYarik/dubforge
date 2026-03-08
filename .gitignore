@@ -17,3 +17,6 @@ build/
 *.venv
 .idea/
 .vscode/
+.pytest_cache/
+coverage/
+htmlcov/
