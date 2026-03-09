@@ -35,9 +35,23 @@ export const useVideosStore = defineStore('videos', () => {
     }
   }
 
+  async function fetchVideo(videoId) {
+    error.value = null
+    try {
+      const { data } = await videosApi.getVideo(videoId)
+      const idx = videos.value.findIndex(v => v.video_id === videoId)
+      if (idx !== -1) videos.value[idx] = data
+      else videos.value.push(data)
+      return data
+    } catch (e) {
+      error.value = e.response?.data?.detail ?? e.message
+      throw e
+    }
+  }
+
   function videosForProject(projectId) {
     return videos.value.filter((v) => v.project_id === projectId)
   }
 
-  return { videos, loading, error, fetchVideos, uploadVideo, videosForProject }
+  return { videos, loading, error, fetchVideos, fetchVideo, uploadVideo, videosForProject }
 })

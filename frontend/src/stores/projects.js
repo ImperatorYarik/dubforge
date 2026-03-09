@@ -49,5 +49,16 @@ export const useProjectsStore = defineStore('projects', () => {
     }
   }
 
-  return { projects, currentProject, loading, error, fetchProjects, fetchProject, createProject }
+  async function deleteProject(projectId) {
+    error.value = null
+    try {
+      await projectsApi.deleteProject(projectId)
+      projects.value = projects.value.filter(p => p.project_id !== projectId)
+    } catch (e) {
+      error.value = e.response?.data?.detail ?? e.message
+      throw e
+    }
+  }
+
+  return { projects, currentProject, loading, error, fetchProjects, fetchProject, createProject, deleteProject }
 })

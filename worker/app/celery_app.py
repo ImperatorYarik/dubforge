@@ -21,5 +21,5 @@ celery.conf.update(
 @worker_process_init.connect
 def init_model(**kwargs):
     """Pre-load the Whisper model when the worker process starts."""
-    from app.tasks.transcribe import get_model
+    from worker.app.tasks.transcribe import get_model
     get_model()

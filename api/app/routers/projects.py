@@ -18,7 +18,9 @@ async def create_project(youtube_url: str, download_from_youtube: bool = True):
 
     if download_from_youtube:
         os.makedirs(f"/tmp/{project_id}", exist_ok=True)
-        await download_youtube_video(youtube_url, local_path)
+        success = await download_youtube_video(youtube_url, local_path)
+        if not success:
+            raise RuntimeError("Failed to download YouTube video")
 
         object_name = f"{project_id}/video.mp4"
         with open(local_path, "rb") as f:
@@ -44,3 +46,12 @@ async def get_project(project_id: str):
         return ProjectResponse(project_id=project["project_id"], metadata=project["metadata"], created_at=project["created_at"], updated_at=project["updated_at"])
     else:
         return {"message": "Project not found"}
+    
+@router.delete("/{project_id}")
+async def delete_project(project_id: str):
+    success = await projects.delete_project(project_id)
+    if success:
+        storage.delete_folder(project_id)
+        return {"message": "Project deleted successfully"}
+    else:
+        return {"message": "Project not found"} 

@@ -13,3 +13,7 @@ export function listProjects() {
 export function getProject(projectId) {
   return client.get(`/projects/${projectId}`)
 }
+
+export function deleteProject(projectId) {
+  return client.delete(`/projects/${projectId}`)
+}

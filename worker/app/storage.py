@@ -18,7 +18,14 @@ class Storage:
         except Exception as e:
             print(f"Error uploading file: {e}")
             return False
-        
+
+    @staticmethod
+    def upload_file_from_path(local_path: str, object_name: str) -> str:
+        """Upload a local file path to S3 and return its URL."""
+        with open(local_path, "rb") as f:
+            client.upload_fileobj(f, settings.BUCKET_NAME, object_name)
+        return f"{settings.S3_ENDPOINT}/{settings.BUCKET_NAME}/{object_name}"
+
     @staticmethod
     def get_base_url():
         return settings.S3_ENDPOINT + '/' + settings.BUCKET_NAME

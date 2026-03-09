@@ -1,5 +1,6 @@
 FastAPI
-uvicorn
+uvicorn[standard]
+websockets
 python-multipart
 boto3
 yt-dlp

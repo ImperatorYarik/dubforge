@@ -1,24 +1,20 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { getStreamUrl } from '@/api/videos'
+import SkeletonBlock from '@/components/SkeletonBlock.vue'
 
 const props = defineProps({
-  videoId: {
-    type: String,
-    required: true,
-  },
-  /** Optional poster/thumbnail image URL */
-  poster: {
-    type: String,
-    default: null,
-  },
+  videoId: { type: String, required: true },
+  poster:  { type: String, default: null },
 })
 
 const streamUrl = ref(null)
 const error = ref(false)
 const loading = ref(true)
 
-onMounted(async () => {
+async function load() {
+  loading.value = true
+  error.value = false
   try {
     const { data } = await getStreamUrl(props.videoId)
     streamUrl.value = data.url
@@ -27,18 +23,17 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
-
-function onError() {
-  error.value = true
 }
+
+onMounted(load)
+watch(() => props.videoId, load)
 </script>
 
 <template>
-  <div class="video-player">
-    <div v-if="loading" class="player-loading">Loading…</div>
-    <div v-else-if="error" class="player-error">
-      <span>⚠️ Could not load video.</span>
+  <div class="video-wrap">
+    <SkeletonBlock v-if="loading" width="100%" height="280px" radius="var(--radius-lg)" />
+    <div v-else-if="error" class="error-state">
+      Could not load video.
     </div>
     <video
       v-else-if="streamUrl"
@@ -48,12 +43,32 @@ function onError() {
       preload="metadata"
       playsinline
       class="player"
-      @error="onError"
-    >
-      Your browser does not support the video tag.
-    </video>
+      @error="error = true"
+    />
   </div>
 </template>
+
+<style scoped>
+.video-wrap {
+  width: 100%;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #0A0A0A;
+}
+.player {
+  width: 100%;
+  max-height: 340px;
+  display: block;
+  background: #000;
+}
+.error-state {
+  padding: 48px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+</style>
+
 
 <style scoped>
 .video-player {
