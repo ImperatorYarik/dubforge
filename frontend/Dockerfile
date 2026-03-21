@@ -1,8 +1,11 @@
+# syntax=docker/dockerfile:1
+
 # Build stage
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package.json ./
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm \
+    npm install
 COPY . .
 RUN npm run build
 

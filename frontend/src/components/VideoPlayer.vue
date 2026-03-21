@@ -31,7 +31,7 @@ watch(() => props.videoId, load)
 
 <template>
   <div class="video-wrap">
-    <SkeletonBlock v-if="loading" width="100%" height="280px" radius="var(--radius-lg)" />
+    <SkeletonBlock v-if="loading" width="100%" height="100%" radius="0" />
     <div v-else-if="error" class="error-state">
       Could not load video.
     </div>
@@ -51,49 +51,23 @@ watch(() => props.videoId, load)
 <style scoped>
 .video-wrap {
   width: 100%;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: #0A0A0A;
+  height: 100%;
+  background: #000;
 }
 .player {
   width: 100%;
-  max-height: 340px;
+  height: 100%;
+  max-height: 100%;
   display: block;
+  object-fit: contain;
   background: #000;
 }
 .error-state {
-  padding: 48px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-</style>
-
-
-<style scoped>
-.video-player {
-  width: 100%;
-  background: #000;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.player {
-  width: 100%;
-  max-height: 480px;
-  display: block;
-  background: #000;
-}
-
-.player-loading,
-.player-error {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  padding: 2.5rem;
-  color: #aaa;
-  font-size: 0.9rem;
+  height: 100%;
+  color: rgba(255,255,255,0.35);
+  font-size: 13px;
 }
 </style>

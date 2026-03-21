@@ -1,20 +1,26 @@
-/* -------- Ghost UI Design System -------- */
+/* -------- ElevenLabs-inspired Design System -------- */
 :root {
-  --bg: #FAFAFA;
+  --bg: #FFFFFF;
   --surface: #FFFFFF;
-  --surface-subtle: #F4F4F5;
-  --surface-hover: #F9F9F9;
-  --text: #18181B;
-  --text-muted: #71717A;
-  --text-placeholder: #A1A1AA;
+  --surface-subtle: #F5F5F5;
+  --surface-hover: #F7F7F7;
+  --text: #0A0A0A;
+  --text-muted: #6B6B6B;
+  --text-placeholder: #ABABAB;
   --accent: #000000;
   --accent-text: #FFFFFF;
-  --border: #E4E4E7;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04), 0 1px 6px rgba(0,0,0,0.03);
-  --shadow: 0 4px 20px rgba(0,0,0,0.05);
+  --border: #E5E5E5;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow: 0 4px 20px rgba(0,0,0,0.08);
   --radius: 8px;
   --radius-lg: 12px;
   --sidebar-width: 220px;
+  --sidebar-bg: #0F0F0F;
+  --sidebar-text: rgba(255,255,255,0.55);
+  --sidebar-text-active: #FFFFFF;
+  --sidebar-hover-bg: rgba(255,255,255,0.07);
+  --sidebar-active-bg: rgba(255,255,255,0.10);
+  --sidebar-border: rgba(255,255,255,0.08);
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
@@ -79,6 +85,13 @@ button { cursor: pointer; border: none; background: none; }
 }
 .btn-ghost:hover:not(:disabled) { background: var(--surface-subtle); color: var(--text); }
 
+.btn-secondary {
+  background: var(--surface-subtle);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover:not(:disabled) { background: var(--border); }
+
 .btn-sm { padding: 5px 12px; font-size: 12.5px; }
 
 /* -------- Shared Input -------- */
@@ -101,7 +114,7 @@ button { cursor: pointer; border: none; background: none; }
   100% { background-position:  600px 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, #F4F4F5 25%, #EBEBEC 50%, #F4F4F5 75%);
+  background: linear-gradient(90deg, #F5F5F5 25%, #EBEBEB 50%, #F5F5F5 75%);
   background-size: 600px 100%;
   animation: shimmer 1.4s infinite linear;
   border-radius: var(--radius);

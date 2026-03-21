@@ -22,10 +22,11 @@ const translatedSegs  = ref([])
 const isProcessing    = ref(false)
 const progressPct     = ref(0)
 const progressMsg     = ref('')
+const activeTab       = ref('original')  // 'original' | 'dubbed'
+const panelOpen       = ref(true)
 
-// Transcription state
-const transcription   = ref('')         // plain text from MongoDB
-const translateMode   = ref(false)      // toggle: translate or just transcribe
+const transcription   = ref('')
+const translateMode   = ref(false)
 
 onMounted(async () => {
   await Promise.all([
@@ -38,7 +39,6 @@ onMounted(async () => {
 })
 
 const project = computed(() => projectsStore.currentProject)
-
 const sourceVideo = computed(() =>
   videosStore.videosForProject(route.params.id)[0] ?? null
 )
@@ -61,7 +61,6 @@ async function generateTranscription() {
       translateMode.value,
       onProgress,
     )
-    // Fetch the single video to get the updated transcription from MongoDB
     const updated = await videosStore.fetchVideo(sourceVideo.value.video_id)
     transcription.value = updated?.transcription ?? ''
     toast.success('Transcription complete')
@@ -89,6 +88,7 @@ async function generateDub() {
     )
     if (result?.dubbed_url) {
       dubbedDirectUrl.value = result.dubbed_url
+      activeTab.value = 'dubbed'
     }
     if (result?.transcript_url) {
       try {
@@ -109,317 +109,608 @@ async function generateDub() {
     progressMsg.value  = ''
   }
 }
+
+const isDubbing = computed(() => isProcessing.value && !progressMsg.value.includes('ranscri'))
+const isTranscribing = computed(() => isProcessing.value && progressMsg.value.includes('ranscri'))
 </script>
 
 <template>
   <div class="workspace">
-    <!-- Toolbar -->
-    <div class="toolbar">
-      <button class="btn btn-ghost btn-sm" @click="router.push({ name: 'projects' })">
-        ← Projects
-      </button>
 
-      <template v-if="project">
-        <span class="proj-title">{{ project.metadata?.title || 'Untitled' }}</span>
-      </template>
-
-      <!-- Progress bar (shown during any job) -->
-      <div v-if="isProcessing" class="progress-wrap">
-        <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: progressPct + '%' }" />
-        </div>
-        <span class="progress-label">{{ progressMsg || 'Processing…' }} {{ progressPct }}%</span>
+    <!-- ── Top Bar ────────────────────────────────────────────── -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-btn" title="Back" @click="router.push({ name: 'projects' })">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="icon-btn" :title="panelOpen ? 'Collapse panel' : 'Expand panel'" @click="panelOpen = !panelOpen">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+            <path d="M5.5 2.5v11" stroke="currentColor" stroke-width="1.4"/>
+            <path v-if="panelOpen" d="M3 7l-1.5 1L3 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path v-else d="M3.5 7l1.5 1-1.5 1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
 
-      <!-- Transcribe controls -->
-      <div class="transcribe-group">
+      <div class="topbar-center">
+        <span class="topbar-title">{{ project?.metadata?.title || 'Untitled project' }}</span>
+      </div>
+
+      <div class="topbar-right">
         <label class="translate-toggle" :class="{ active: translateMode }">
           <input type="checkbox" v-model="translateMode" :disabled="isProcessing" />
           Translate
         </label>
         <button
-          class="btn btn-secondary btn-sm"
+          class="btn btn-ghost btn-sm"
           :disabled="isProcessing || !sourceVideo"
           @click="generateTranscription"
         >
-          <span v-if="isProcessing && progressMsg.includes('ranscri')" class="spinner" />
+          <span v-if="isTranscribing" class="spinner spinner-dark" />
           Transcribe
         </button>
+        <button
+          class="btn btn-primary btn-sm"
+          :disabled="isProcessing || !sourceVideo"
+          @click="generateDub"
+        >
+          <span v-if="isDubbing" class="spinner" />
+          Generate Dub
+        </button>
       </div>
+    </header>
 
-      <button
-        class="btn btn-primary fab"
-        :disabled="isProcessing || !sourceVideo"
-        @click="generateDub"
-      >
-        <span v-if="isProcessing && !progressMsg.includes('ranscri')" class="spinner" />
-        Generate Dub →
-      </button>
-    </div>
+    <!-- ── Body ──────────────────────────────────────────────── -->
+    <div class="body">
 
-    <!-- Loading project -->
-    <div v-if="projectsStore.loading" class="panes">
-      <div class="pane">
-        <SkeletonBlock width="100%" height="340px" radius="var(--radius-lg)" />
-        <div class="transcript-head">
-          <SkeletonBlock width="120px" height="14px" style="margin-top:24px" />
+      <!-- Left panel: Files + Transcript -->
+      <aside class="left-panel" :class="{ collapsed: !panelOpen }">
+        <!-- Files section -->
+        <div class="panel-section">
+          <div class="panel-section-header">
+            <span class="panel-section-title">Files</span>
+          </div>
+
+          <div class="panel-label">Videos</div>
+
+          <div v-if="videosStore.loading" class="video-card-skeleton">
+            <SkeletonBlock width="100%" height="90px" radius="var(--radius)" />
+          </div>
+
+          <div v-else-if="sourceVideo" class="video-card" :class="{ active: activeTab === 'original' }" @click="activeTab = 'original'">
+            <div class="video-card-thumb">
+              <img v-if="project?.metadata?.thumbnail" :src="project.metadata.thumbnail" alt="" class="thumb-img" />
+              <div v-else class="thumb-fallback">▶</div>
+            </div>
+            <div class="video-card-info">
+              <p class="video-card-name">{{ project?.metadata?.title || 'Source video' }}</p>
+              <p class="video-card-meta">Original</p>
+            </div>
+          </div>
+
+          <div v-if="dubbedDirectUrl" class="video-card" :class="{ active: activeTab === 'dubbed' }" @click="activeTab = 'dubbed'">
+            <div class="video-card-thumb dubbed-thumb">
+              <span>▶</span>
+            </div>
+            <div class="video-card-info">
+              <p class="video-card-name">{{ project?.metadata?.title || 'Dubbed video' }}</p>
+              <p class="video-card-meta">Dubbed</p>
+            </div>
+          </div>
+
+          <div v-else-if="!sourceVideo && !videosStore.loading" class="panel-empty">
+            No video found.
+          </div>
         </div>
-      </div>
-      <div class="pane">
-        <SkeletonBlock width="100%" height="340px" radius="var(--radius-lg)" />
-      </div>
-    </div>
 
-    <!-- Dual pane workspace -->
-    <div v-else class="panes">
-      <!-- LEFT: original -->
-      <div class="pane">
-        <div class="pane-label">Original</div>
-        <div v-if="sourceVideo" class="player-wrap">
-          <VideoPlayer :video-id="sourceVideo.video_id" />
-        </div>
-        <div v-else class="empty-player">No video uploaded yet.</div>
+        <div class="panel-divider" />
 
-        <div class="transcript-head">
-          <span class="pane-label">Transcript</span>
-        </div>
-        <div class="transcript-scroll">
-          <template v-if="isProcessing && progressMsg.includes('ranscri')">
+        <!-- Transcript section -->
+        <div class="panel-section panel-section-grow">
+          <div class="panel-section-header">
+            <span class="panel-section-title">Transcript</span>
+          </div>
+
+          <template v-if="isTranscribing">
             <TranscriptPanel :segments="[]" :loading="true" />
           </template>
-          <div v-else-if="transcription" class="transcription-text">
+          <div v-else-if="transcription" class="transcript-text">
             <p v-for="(line, i) in transcription.split('\n').filter(l => l.trim())" :key="i">{{ line }}</p>
           </div>
-          <div v-else class="empty-transcript">
-            No transcript yet — click <strong>Transcribe</strong> to generate one.
+          <div v-else class="panel-empty">
+            No transcript yet — click <strong>Transcribe</strong>.
           </div>
         </div>
-      </div>
+      </aside>
 
-      <!-- RIGHT: dubbed -->
-      <div class="pane">
-        <div class="pane-label">Translation</div>
+      <!-- Divider -->
+      <div class="panel-resize-handle" v-show="panelOpen" />
 
-        <!-- Processing state -->
-        <template v-if="isProcessing && !progressMsg.includes('ranscri')">
-          <SkeletonBlock width="100%" height="340px" radius="var(--radius-lg)" />
-          <div class="processing-hint">{{ progressMsg || 'Processing…' }}</div>
-        </template>
+      <!-- Main: video + controls -->
+      <main class="main">
 
-        <!-- Dubbed video -->
-        <template v-else-if="dubbedDirectUrl">
-          <div class="player-wrap">
-            <video
-              :src="proxyVideoUrl(dubbedDirectUrl)"
-              controls
-              class="dubbed-player"
+        <!-- Video player -->
+        <div class="player-area">
+
+          <!-- Processing overlay -->
+          <div v-if="isDubbing" class="processing-overlay">
+            <div class="processing-inner">
+              <div class="processing-spinner" />
+              <p class="processing-msg">{{ progressMsg || 'Processing…' }}</p>
+              <p class="processing-pct">{{ progressPct }}%</p>
+              <div class="processing-bar">
+                <div class="processing-fill" :style="{ width: progressPct + '%' }" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Original video -->
+          <template v-if="activeTab === 'original'">
+            <div v-if="sourceVideo" class="player-wrap">
+              <VideoPlayer :video-id="sourceVideo.video_id" />
+            </div>
+            <div v-else class="player-empty">
+              <p>No video in this project.</p>
+            </div>
+          </template>
+
+          <!-- Dubbed video -->
+          <template v-else-if="activeTab === 'dubbed'">
+            <div v-if="dubbedDirectUrl" class="player-wrap">
+              <video
+                :src="proxyVideoUrl(dubbedDirectUrl)"
+                controls
+                class="dubbed-video"
+              />
+            </div>
+            <div v-else class="player-empty">
+              <p>No dubbed video yet.</p>
+              <p class="player-hint">Click <strong>Generate Dub</strong> to start.</p>
+            </div>
+          </template>
+        </div>
+
+        <!-- Tab bar -->
+        <div class="tab-bar">
+          <button class="tab-btn" :class="{ active: activeTab === 'original' }" @click="activeTab = 'original'">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/>
+              <path d="M5 4.5l4 2.5-4 2.5V4.5z" fill="currentColor"/>
+            </svg>
+            Original
+          </button>
+          <button
+            class="tab-btn"
+            :class="{ active: activeTab === 'dubbed', disabled: !dubbedDirectUrl }"
+            :disabled="!dubbedDirectUrl"
+            @click="dubbedDirectUrl && (activeTab = 'dubbed')"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/>
+              <path d="M4 4.5h6M4 7h4M4 9.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+            Dubbed
+          </button>
+        </div>
+
+        <!-- Translated segments / timeline -->
+        <div v-if="translatedSegs.length || (isDubbing)" class="timeline-panel">
+          <div class="timeline-header">
+            <span class="panel-label" style="margin-bottom:0">Translated Script</span>
+          </div>
+          <div class="timeline-scroll">
+            <TranscriptPanel
+              :segments="translatedSegs"
+              :loading="isDubbing"
+              :editable="true"
             />
           </div>
-        </template>
-
-        <!-- Idle placeholder -->
-        <div v-else class="empty-player idle">
-          <p>Dubbed video will appear here.</p>
-          <p class="hint">Click <strong>Generate Dub →</strong> to start.</p>
         </div>
 
-        <div class="transcript-head">
-          <span class="pane-label">Translated Script</span>
-        </div>
-        <div class="transcript-scroll">
-          <TranscriptPanel
-            :segments="translatedSegs"
-            :loading="isProcessing && !progressMsg.includes('ranscri')"
-            :editable="true"
-          />
-        </div>
-      </div>
+      </main>
     </div>
+
   </div>
 </template>
 
 <style scoped>
+/* ── Layout shell ── */
 .workspace {
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  background: var(--surface);
 }
 
-/* ---- Toolbar ---- */
-.toolbar {
+/* ── Top bar ── */
+.topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 24px;
+  height: 48px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   flex-shrink: 0;
+  gap: 12px;
 }
-.proj-title {
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 80px;
+}
+
+.topbar-center {
   flex: 1;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.topbar-title {
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.fab { margin-left: auto; }
-
-/* ---- Progress ---- */
-.progress-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 160px;
-}
-.progress-bar {
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  background: var(--color-accent, #6366f1);
-  border-radius: 2px;
-  transition: width 0.3s ease;
-}
-.progress-label {
-  font-size: 11px;
-  color: var(--text-muted);
-  white-space: nowrap;
+  max-width: 400px;
 }
 
-/* ---- Transcribe group ---- */
-.transcribe-group {
+.topbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 80px;
+  justify-content: flex-end;
 }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.icon-btn:hover { background: var(--surface-subtle); color: var(--text); }
+
+/* ── Translate toggle ── */
 .translate-toggle {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--text-muted);
   cursor: pointer;
   user-select: none;
-  padding: 4px 8px;
+  padding: 4px 10px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface);
   transition: border-color 0.15s, color 0.15s;
 }
-.translate-toggle.active {
-  border-color: var(--color-accent, #6366f1);
-  color: var(--color-accent, #6366f1);
-}
-.translate-toggle input { accent-color: var(--color-accent, #6366f1); }
+.translate-toggle.active { border-color: var(--text); color: var(--text); }
+.translate-toggle input { accent-color: var(--accent); }
 
-/* ---- Panes ---- */
-.panes {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
+/* ── Body ── */
+.body {
+  display: flex;
   flex: 1;
   overflow: hidden;
 }
 
-.pane {
+/* ── Left panel ── */
+.left-panel {
+  width: 280px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   border-right: 1px solid var(--border);
-  padding: 20px;
-  gap: 0;
+  overflow: hidden;
+  background: var(--surface);
+  transition: width 0.22s ease, opacity 0.18s ease;
 }
-.pane:last-child { border-right: none; }
+.left-panel.collapsed {
+  width: 0;
+  opacity: 0;
+  border-right: none;
+}
 
-.pane-label {
-  font-size: 11px;
+.panel-section {
+  padding: 16px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.panel-section-grow {
+  flex: 1;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.panel-section-header {
+  margin-bottom: 4px;
+}
+.panel-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--text);
+}
+
+.panel-label {
+  font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--text-muted);
-  margin-bottom: 12px;
+  margin-bottom: 6px;
+}
+
+.panel-divider {
+  height: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.panel-empty {
+  font-size: 12.5px;
+  color: var(--text-placeholder);
+  padding: 12px 0 4px;
+}
+
+/* ── Video cards in left panel ── */
+.video-card {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.1s;
+  border: 1px solid transparent;
+}
+.video-card:hover { background: var(--surface-subtle); }
+.video-card.active {
+  background: var(--surface-subtle);
+  border-color: var(--border);
+}
+
+.video-card-thumb {
+  width: 72px;
+  height: 48px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #111;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.thumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-fallback { font-size: 16px; color: rgba(255,255,255,0.4); }
+.dubbed-thumb { background: #1a1a1a; }
+
+.video-card-info { min-width: 0; }
+.video-card-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.video-card-meta {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ── Transcript in left panel ── */
+.transcript-text {
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text);
+  overflow-y: auto;
+  flex: 1;
+  padding-right: 4px;
+}
+.transcript-text p { margin: 0 0 5px; }
+
+/* ── Resize handle ── */
+.panel-resize-handle {
+  width: 1px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Main content ── */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0A0A0A;
+}
+
+/* ── Player area ── */
+.player-area {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0A0A0A;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .player-wrap {
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  margin-bottom: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.dubbed-player {
+.dubbed-video {
+  max-width: 100%;
+  max-height: 100%;
   width: 100%;
-  max-height: 340px;
+  height: 100%;
+  object-fit: contain;
   display: block;
   background: #000;
-  border-radius: var(--radius-lg);
 }
 
-.empty-player {
+.player-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 280px;
-  border: 1.5px dashed var(--border);
-  border-radius: var(--radius-lg);
-  color: var(--text-muted);
+  gap: 8px;
+  color: rgba(255,255,255,0.3);
   font-size: 13px;
   text-align: center;
-  gap: 8px;
 }
-.idle { background: var(--surface-subtle); }
-.hint { font-size: 12px; color: var(--text-placeholder); }
+.player-hint { font-size: 12px; color: rgba(255,255,255,0.2); }
 
-.processing-hint {
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 12.5px;
-  padding: 10px 0;
-}
-
-.transcript-head {
+/* ── Processing overlay ── */
+.processing-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10,10,10,0.88);
   display: flex;
   align-items: center;
-  padding: 16px 0 8px;
+  justify-content: center;
+  z-index: 10;
+}
+.processing-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: rgba(255,255,255,0.85);
+  text-align: center;
+}
+.processing-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255,255,255,0.12);
+  border-top-color: rgba(255,255,255,0.85);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.processing-msg { font-size: 14px; font-weight: 500; letter-spacing: -0.01em; }
+.processing-pct { font-size: 12px; color: rgba(255,255,255,0.45); }
+.processing-bar {
+  width: 180px;
+  height: 3px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.processing-fill {
+  height: 100%;
+  background: rgba(255,255,255,0.7);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ── Tab bar ── */
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-.transcript-scroll {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.transcription-text {
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 6px;
   font-size: 13px;
-  line-height: 1.7;
-  color: var(--text);
-}
-.transcription-text p {
-  margin: 0 0 6px;
-}
-
-.empty-transcript {
-  font-size: 13px;
+  font-weight: 500;
   color: var(--text-muted);
-  padding: 16px 0;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  letter-spacing: -0.01em;
+}
+.tab-btn:hover:not(:disabled) { background: var(--surface-subtle); color: var(--text); }
+.tab-btn.active {
+  background: var(--surface-subtle);
+  color: var(--text);
+  border-color: var(--border);
+}
+.tab-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* ── Timeline/transcript panel ── */
+.timeline-panel {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  flex-shrink: 0;
+}
+.timeline-header {
+  padding: 10px 16px 6px;
+  flex-shrink: 0;
+}
+.timeline-scroll {
+  overflow-y: auto;
+  padding: 0 8px 8px;
+  flex: 1;
 }
 
-/* ---- Spinner ---- */
+/* ── Spinners ── */
 .spinner {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid rgba(255,255,255,0.35);
+  border: 2px solid rgba(255,255,255,0.3);
   border-top-color: rgba(255,255,255,0.9);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+.spinner-dark {
+  border: 2px solid rgba(0,0,0,0.15);
+  border-top-color: rgba(0,0,0,0.7);
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── VideoPlayer override: fill player-area ── */
+.player-wrap :deep(.video-wrap) {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background: #000;
+}
+.player-wrap :deep(.player) {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
 </style>
