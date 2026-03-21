@@ -5,7 +5,8 @@ pydantic
 boto3
 ffmpeg-python
 faster-whisper
-transformers==4.38.0
-torch<2.6
-TTS
 pymongo
+transformers>=4.45,<4.46
+demucs
+soundfile
+TTS

@@ -37,6 +37,32 @@ async def get_video(video_id: str):
     return video
 
 
+@router.get("/{video_id}/dubbed-stream")
+async def get_dubbed_stream_url(video_id: str):
+    """Return a presigned URL for the dubbed video."""
+    video = await videos.get_video(video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    if not video.get("dubbed_url"):
+        raise HTTPException(status_code=404, detail="No dubbed video available")
+
+    parsed = urlparse(video["dubbed_url"])
+    parts = parsed.path.lstrip("/").split("/", 1)
+    if len(parts) != 2:
+        raise HTTPException(status_code=500, detail="Unexpected dubbed URL format")
+    object_key = parts[1]
+
+    internal_url = storage.generate_presigned_url(object_key, expires_in=3600)
+    internal_parsed = urlparse(internal_url)
+    public_parsed = urlparse(settings.S3_PUBLIC_ENDPOINT)
+    public_url = internal_parsed._replace(
+        scheme=public_parsed.scheme,
+        netloc=public_parsed.netloc,
+    ).geturl()
+
+    return JSONResponse({"url": public_url})
+
+
 @router.get("/{video_id}/stream")
 async def get_stream_url(video_id: str):
     """Return a short-lived presigned URL the browser can use to stream the video."""

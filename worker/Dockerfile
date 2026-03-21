@@ -1,15 +1,38 @@
+# syntax=docker/dockerfile:1
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
+ENV DEBIAN_FRONTEND=noninteractive
+ENV COQUI_TOS_AGREED=1
 WORKDIR /app
 
+# ffmpeg from apt provides libavutil.so.56 (FFmpeg 4) which torchcodec needs.
+# build-essential is required for packages compiled from source (e.g. pyworld).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip ffmpeg pkg-config \
+    python3 python3-pip python3-dev \
+    pkg-config build-essential \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip3 install uv
+
+# Install torch from pip so all packages (including torchcodec) share the same C++ ABI.
+# conda-installed torch and pip-installed torchcodec are ABI-incompatible.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system \
+    "torch==2.5.1+cu124" "torchvision==0.20.1+cu124" "torchaudio==2.5.1+cu124" \
+    --index-url https://download.pytorch.org/whl/cu124
+
 COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --system --no-build-isolation -r requirements.txt
 
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Pre-download model weights into the image so cold-start is instant.
+# Each model is its own layer so a change to one doesn't re-download the others.
+RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cpu', compute_type='int8')"
+RUN python3 -c "from demucs.pretrained import get_model; get_model('htdemucs')"
+RUN python3 -c "from TTS.api import TTS; TTS('tts_models/multilingual/multi-dataset/xtts_v2')"
 
-COPY . .
+COPY app/ ./app/
 
 CMD ["celery", "-A", "app.celery_app.celery", "worker", "--loglevel=info"]

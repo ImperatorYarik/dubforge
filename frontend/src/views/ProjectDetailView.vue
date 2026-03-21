@@ -8,7 +8,7 @@ import { useToast } from '@/composables/useToast'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import TranscriptPanel from '@/components/TranscriptPanel.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
-import { proxyVideoUrl } from '@/utils/url'
+import { getDubbedStreamUrl } from '@/api/videos'
 
 const route  = useRoute()
 const router = useRouter()
@@ -35,6 +35,12 @@ onMounted(async () => {
   ])
   if (sourceVideo.value?.transcription) {
     transcription.value = sourceVideo.value.transcription
+  }
+  if (sourceVideo.value?.dubbed_url) {
+    try {
+      const { data } = await getDubbedStreamUrl(sourceVideo.value.video_id)
+      dubbedDirectUrl.value = data.url
+    } catch { /* no dubbed video */ }
   }
 })
 
@@ -87,18 +93,19 @@ async function generateDub() {
       onProgress,
     )
     if (result?.dubbed_url) {
-      dubbedDirectUrl.value = result.dubbed_url
+      try {
+        const { data } = await getDubbedStreamUrl(sourceVideo.value.video_id)
+        dubbedDirectUrl.value = data.url
+      } catch { dubbedDirectUrl.value = result.dubbed_url }
       activeTab.value = 'dubbed'
     }
-    if (result?.transcript_url) {
-      try {
-        const res = await fetch(proxyVideoUrl(result.transcript_url))
-        const txt = await res.text()
-        translatedSegs.value = txt.split('\n').filter(l => l.trim()).map(l => {
-          const m = l.match(/\[(\d+\.\d+)s - (\d+\.\d+)s\] (.+)/)
-          return m ? { start: parseFloat(m[1]), end: parseFloat(m[2]), text: m[3] } : null
-        }).filter(Boolean)
-      } catch { /* transcript fetch failed silently */ }
+    const updated = await videosStore.fetchVideo(sourceVideo.value.video_id)
+    if (updated?.transcription) {
+      transcription.value = updated.transcription
+      translatedSegs.value = updated.transcription.split('\n').filter(l => l.trim()).map(l => {
+        const m = l.match(/\[(\d+\.\d+)s - (\d+\.\d+)s\] (.+)/)
+        return m ? { start: parseFloat(m[1]), end: parseFloat(m[2]), text: m[3] } : null
+      }).filter(Boolean)
     }
     toast.success('Dubbing complete')
   } catch (e) {
@@ -261,7 +268,7 @@ const isTranscribing = computed(() => isProcessing.value && progressMsg.value.in
           <template v-else-if="activeTab === 'dubbed'">
             <div v-if="dubbedDirectUrl" class="player-wrap">
               <video
-                :src="proxyVideoUrl(dubbedDirectUrl)"
+                :src="dubbedDirectUrl"
                 controls
                 class="dubbed-video"
               />

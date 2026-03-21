@@ -24,6 +24,7 @@ async def list_videos():
             "video_url": video["video_url"],
             "transcription": video.get("transcription"),
             "transcript_url": video.get("transcript_url"),
+            "dubbed_url": video.get("dubbed_url"),
             "created_at": video["created_at"],
             "updated_at": video["updated_at"]
         })
@@ -38,6 +39,7 @@ async def get_video(video_id: str):
             "video_url": video["video_url"],
             "transcription": video.get("transcription"),
             "transcript_url": video.get("transcript_url"),
+            "dubbed_url": video.get("dubbed_url"),
             "created_at": video["created_at"],
             "updated_at": video["updated_at"]
         }

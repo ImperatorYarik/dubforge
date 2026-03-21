@@ -20,3 +20,7 @@ export function uploadVideo(file, projectId) {
 export function getStreamUrl(videoId) {
   return client.get(`/videos/${videoId}/stream`)
 }
+
+export function getDubbedStreamUrl(videoId) {
+  return client.get(`/videos/${videoId}/dubbed-stream`)
+}

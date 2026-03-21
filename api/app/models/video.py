@@ -15,5 +15,6 @@ class VideoResponse(BaseModel):
     video_url: str
     transcription: Optional[str] = None
     transcript_url: Optional[str] = None
+    dubbed_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime

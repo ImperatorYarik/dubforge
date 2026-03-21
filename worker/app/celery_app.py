@@ -6,7 +6,7 @@ celery = Celery(
     'video_trans_worker',
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.pipeline"],
+    include=["app.pipelines.dubbing_pipeline"],
 )
 
 celery.conf.update(
@@ -21,5 +21,5 @@ celery.conf.update(
 @worker_process_init.connect
 def init_model(**kwargs):
     """Pre-load the Whisper model when the worker process starts."""
-    from worker.app.tasks.transcribe import get_model
+    from app.tasks.transcribe import get_model
     get_model()

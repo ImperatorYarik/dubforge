@@ -60,6 +60,7 @@ services:
      - COQUI_TOS_AGREED=1 # Agree to TOS for Coqui TTS models
     volumes:
       - ./worker:/app
+      - ./worker/tmp:/tmp
     depends_on:
       - redis
     networks:
