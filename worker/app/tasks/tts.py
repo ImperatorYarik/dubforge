@@ -1,10 +1,22 @@
 import gc
 import logging
 import os
+import warnings
 
 import torch
 
 logger = logging.getLogger(__name__)
+
+# Silence TTS library's own verbose WARNING-level logs (download notices, model info, sentence splits)
+logging.getLogger("TTS").setLevel(logging.ERROR)
+# Silence transformers verbose warnings (GPT2InferenceModel generative capabilities, etc.)
+logging.getLogger("transformers").setLevel(logging.ERROR)
+
+# Suppress torch.load FutureWarning from inside TTS and transformers (weights_only default change)
+warnings.filterwarnings("ignore", category=FutureWarning, module=r"TTS\..*")
+warnings.filterwarnings("ignore", category=FutureWarning, module=r"transformers\..*")
+# Suppress attention mask UserWarning from transformers generation
+warnings.filterwarnings("ignore", message=".*attention mask.*", category=UserWarning)
 
 _tts = None
 
@@ -31,7 +43,27 @@ def release_model() -> None:
         torch.cuda.empty_cache()
 
 
-def synthesize(text: str, output_path: str, speaker: str, ref_text: str = "", instruction: str = "neutral") -> bool:
+def synthesize_builtin(text: str, output_path: str, speaker_name: str) -> bool:
+    """
+    Synthesize text to WAV using an XTTS v2 built-in speaker name.
+    """
+    logger.info(f"Synthesizing (builtin speaker={speaker_name}): '{text[:50]}'")
+    try:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        get_tts().tts_to_file(
+            text=text,
+            speaker=speaker_name,
+            language="en",
+            file_path=output_path,
+        )
+        logger.info(f"Saved TTS to {output_path}")
+        return True
+    except Exception as e:
+        logger.error(f"XTTS synthesis failed: {e}")
+        return False
+
+
+def synthesize(text: str, output_path: str, speaker: str, ref_text: str = "") -> bool:
     """
     Synthesize text to WAV at output_path using XTTS v2 zero-shot voice cloning.
 

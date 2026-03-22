@@ -61,5 +61,22 @@ export const useJobsStore = defineStore('jobs', () => {
     }
   }
 
-  return { tasks, loading, error, transcribe, dub }
+  // Re-dub using existing transcription (skip Whisper).
+  async function redub(projectId, videoId, onProgress) {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await jobsApi.redubVideo(projectId, videoId)
+      await _watchProgress(data.task_id, onProgress)
+      const { data: s } = await jobsApi.getJobStatus(data.task_id)
+      return s.result
+    } catch (e) {
+      error.value = e.response?.data?.detail ?? e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return { tasks, loading, error, transcribe, dub, redub }
 })

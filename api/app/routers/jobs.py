@@ -13,13 +13,14 @@ router = APIRouter()
 
 
 @router.post("/dub")
-async def dub_video(project_id: str, video_id: str):
+async def dub_video(project_id: str, video_id: str, skip_transcription: bool = False):
     video = await videos.get_video(video_id)
     if not video:
         return {"error": "Video not found"}
     task = celery.send_task(
         "app.pipelines.dubbing_pipeline.dub_video",
         args=[project_id, video_id, video["video_url"]],
+        kwargs={"skip_transcription": skip_transcription},
     )
     return {"task_id": task.id, "status": "submitted"}
 
@@ -34,13 +35,14 @@ async def get_job_status(task_id: str):
     else:
         return {"status": result.state.lower()}
 
+
 @router.post("/transcribe")
 async def transcribe_video(project_id: str, video_id: str, translate: bool = False):
     video = await videos.get_video(video_id)
     if not video:
         return {"error": "Video not found"}
     task = celery.send_task(
-        "app.tasks.dub_pipeline.transcribe_video",
+        "app.pipelines.transcribe_pipeline.transcribe_video",
         args=[project_id, video_id, video["video_url"], translate],
     )
     return {"task_id": task.id, "status": "submitted"}
@@ -73,4 +75,5 @@ async def job_progress_ws(websocket: WebSocket, task_id: str):
         pass
     finally:
         await pubsub.unsubscribe(f"job:{task_id}")
+        await pubsub.aclose()
         await r.aclose()

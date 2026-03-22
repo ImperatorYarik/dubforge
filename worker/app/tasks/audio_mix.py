@@ -30,18 +30,29 @@ def build_atempo_filter(ratio: float) -> str:
 
 
 def stretch_clip(input_wav: str, output_wav: str, target_duration: float) -> bool:
-    """Time-stretch input_wav to exactly target_duration seconds."""
+    """Time-stretch input_wav to fit within target_duration seconds.
+
+    Ratio is clamped to [0.75, 1.5] to keep speech intelligible — extreme values
+    (chipmunk / sloth) are worse than slight timing drift. The output is hard-trimmed
+    to target_duration with a 50ms fade-out so any cutoff doesn't bleed into the
+    next segment.
+    """
     src_dur = get_duration(input_wav)
     ratio = src_dur / target_duration
-    ratio = max(0.4, min(ratio, 2.5))
+    clamped = max(0.75, min(ratio, 1.5))
 
-    atempo = build_atempo_filter(ratio)
-    logger.info(f"Stretching {src_dur:.2f}s → {target_duration:.2f}s (ratio={ratio:.3f}, filter={atempo})")
+    atempo = build_atempo_filter(clamped)
+    fade_start = max(0.0, target_duration - 0.05)
+    logger.info(
+        f"Stretching {src_dur:.2f}s → {target_duration:.2f}s "
+        f"(ratio={clamped:.3f}{' clamped' if clamped != ratio else ''})"
+    )
 
     cmd = [
         "ffmpeg", "-y", "-i", input_wav,
-        "-filter:a", atempo,
-        output_wav
+        "-filter:a", f"{atempo},afade=t=out:st={fade_start:.3f}:d=0.05",
+        "-t", str(target_duration),
+        output_wav,
     ]
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
@@ -109,10 +120,10 @@ def build_dubbed_audio(
         output_wav,
     ]
 
-    logger.info(f"Building dubbed audio: {n} TTS clips + ducked original")
+    logger.info(f"Building dubbed audio: {n} inputs (1 background + {n - 1} TTS clips) → '{output_wav}'")
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
-        logger.error(f"mix failed: {result.stderr.decode()}")
+        logger.error(f"Mix failed (exit {result.returncode}): {result.stderr.decode()}")
         return False
 
     logger.info(f"Dubbed audio ready: {output_wav}")
@@ -121,6 +132,7 @@ def build_dubbed_audio(
 
 def mux_audio_into_video(video_path: str, audio_path: str, output_path: str) -> bool:
     """Replace video audio track. Stream-copies video — no re-encode."""
+    logger.info(f"Muxing video='{video_path}' + audio='{audio_path}' → '{output_path}'")
     cmd = [
         "ffmpeg", "-y",
         "-i", video_path,
@@ -134,7 +146,7 @@ def mux_audio_into_video(video_path: str, audio_path: str, output_path: str) -> 
     ]
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
-        logger.error(f"mux failed: {result.stderr.decode()}")
+        logger.error(f"Mux failed (exit {result.returncode}): {result.stderr.decode()}")
         return False
     logger.info(f"Mux complete: {output_path}")
     return True
