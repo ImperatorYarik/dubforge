@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useProjectsStore } from '@/stores/projects'
 import { useVideosStore } from '@/stores/videos'
@@ -27,8 +27,34 @@ const panelOpen       = ref(true)
 
 const transcription   = ref('')
 const translateMode   = ref(false)
+const panelWidth      = ref(280)
+const showRegenMenu   = ref(false)
+const currentJobType  = ref(null)  // 'dub' | 'transcribe' | null
+
+const hasExtractedAudio = computed(() => !!sourceVideo.value?.vocals_url)
+const hasTranscription  = computed(() => !!sourceVideo.value?.transcription || !!transcription.value)
+
+function startResize(e) {
+  e.preventDefault()
+  const startX = e.clientX
+  const startW = panelWidth.value
+  function onMove(ev) {
+    const delta = ev.clientX - startX
+    panelWidth.value = Math.min(600, Math.max(160, startW + delta))
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+  }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
+function _closeRegenMenu() { showRegenMenu.value = false }
+onBeforeUnmount(() => document.removeEventListener('click', _closeRegenMenu))
 
 onMounted(async () => {
+  document.addEventListener('click', _closeRegenMenu)
   await Promise.all([
     projectsStore.fetchProject(route.params.id),
     videosStore.fetchVideos(),
@@ -57,6 +83,7 @@ function onProgress({ pct, message }) {
 async function generateTranscription() {
   if (!sourceVideo.value) return
   isProcessing.value = true
+  currentJobType.value = 'transcribe'
   progressPct.value  = 0
   progressMsg.value  = 'Starting…'
   transcription.value = ''
@@ -74,6 +101,7 @@ async function generateTranscription() {
     toast.error('Transcription failed: ' + e.message)
   } finally {
     isProcessing.value = false
+    currentJobType.value = null
     progressPct.value  = 0
     progressMsg.value  = ''
   }
@@ -82,6 +110,7 @@ async function generateTranscription() {
 async function generateDub() {
   if (!sourceVideo.value) return
   isProcessing.value = true
+  currentJobType.value = 'dub'
   progressPct.value  = 0
   progressMsg.value  = 'Starting…'
   dubbedDirectUrl.value = null
@@ -112,13 +141,60 @@ async function generateDub() {
     toast.error('Dubbing failed: ' + e.message)
   } finally {
     isProcessing.value = false
+    currentJobType.value = null
     progressPct.value  = 0
     progressMsg.value  = ''
   }
 }
 
-const isDubbing = computed(() => isProcessing.value && !progressMsg.value.includes('ranscri'))
-const isTranscribing = computed(() => isProcessing.value && progressMsg.value.includes('ranscri'))
+async function reDub() {
+  showRegenMenu.value = false
+  if (!sourceVideo.value) return
+  isProcessing.value = true
+  currentJobType.value = 'dub'
+  progressPct.value  = 0
+  progressMsg.value  = 'Starting…'
+  dubbedDirectUrl.value = null
+  translatedSegs.value  = []
+  try {
+    const result = await jobsStore.redub(
+      route.params.id,
+      sourceVideo.value.video_id,
+      onProgress,
+    )
+    if (result?.dubbed_url) {
+      try {
+        const { data } = await getDubbedStreamUrl(sourceVideo.value.video_id)
+        dubbedDirectUrl.value = data.url
+      } catch { dubbedDirectUrl.value = result.dubbed_url }
+      activeTab.value = 'dubbed'
+    }
+    const updated = await videosStore.fetchVideo(sourceVideo.value.video_id)
+    if (updated?.transcription) {
+      transcription.value = updated.transcription
+      translatedSegs.value = updated.transcription.split('\n').filter(l => l.trim()).map(l => {
+        const m = l.match(/\[(\d+\.\d+)s - (\d+\.\d+)s\] (.+)/)
+        return m ? { start: parseFloat(m[1]), end: parseFloat(m[2]), text: m[3] } : null
+      }).filter(Boolean)
+    }
+    toast.success('Re-dub complete')
+  } catch (e) {
+    toast.error('Re-dub failed: ' + e.message)
+  } finally {
+    isProcessing.value = false
+    currentJobType.value = null
+    progressPct.value  = 0
+    progressMsg.value  = ''
+  }
+}
+
+function reTranscribe() {
+  showRegenMenu.value = false
+  generateTranscription()
+}
+
+const isDubbing = computed(() => isProcessing.value && currentJobType.value === 'dub')
+const isTranscribing = computed(() => isProcessing.value && currentJobType.value === 'transcribe')
 </script>
 
 <template>
@@ -167,6 +243,34 @@ const isTranscribing = computed(() => isProcessing.value && progressMsg.value.in
           <span v-if="isDubbing" class="spinner" />
           Generate Dub
         </button>
+
+        <!-- Regenerate dropdown — only visible when audio was already extracted -->
+        <div v-if="hasExtractedAudio" class="regen-wrap" @click.stop>
+          <button
+            class="btn btn-ghost btn-sm regen-btn"
+            :disabled="isProcessing"
+            :class="{ active: showRegenMenu }"
+            title="Regenerate steps"
+            @click="showRegenMenu = !showRegenMenu"
+          >
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style="flex-shrink:0">
+              <path d="M11 6.5A4.5 4.5 0 1 1 6.5 2H9M9 2l-2 2M9 2l-2-2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style="flex-shrink:0">
+              <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div v-if="showRegenMenu" class="regen-menu">
+            <button class="regen-item" @click="reTranscribe">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M11 6.5A4.5 4.5 0 1 1 6.5 2H9M9 2l-2 2M9 2l-2-2" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Re-transcribe
+            </button>
+            <button class="regen-item" :disabled="!hasTranscription" @click="reDub">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M11 6.5A4.5 4.5 0 1 1 6.5 2H9M9 2l-2 2M9 2l-2-2" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Re-dub (keep transcript)
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -174,7 +278,7 @@ const isTranscribing = computed(() => isProcessing.value && progressMsg.value.in
     <div class="body">
 
       <!-- Left panel: Files + Transcript -->
-      <aside class="left-panel" :class="{ collapsed: !panelOpen }">
+      <aside class="left-panel" :class="{ collapsed: !panelOpen }" :style="panelOpen ? { width: panelWidth + 'px' } : {}">
         <!-- Files section -->
         <div class="panel-section">
           <div class="panel-section-header">
@@ -233,8 +337,8 @@ const isTranscribing = computed(() => isProcessing.value && progressMsg.value.in
         </div>
       </aside>
 
-      <!-- Divider -->
-      <div class="panel-resize-handle" v-show="panelOpen" />
+      <!-- Divider / resize handle -->
+      <div class="panel-resize-handle" v-show="panelOpen" @mousedown="startResize" />
 
       <!-- Main: video + controls -->
       <main class="main">
@@ -421,14 +525,13 @@ const isTranscribing = computed(() => isProcessing.value && progressMsg.value.in
 
 /* ── Left panel ── */
 .left-panel {
-  width: 280px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
   overflow: hidden;
   background: var(--surface);
-  transition: width 0.22s ease, opacity 0.18s ease;
+  transition: opacity 0.18s ease;
 }
 .left-panel.collapsed {
   width: 0;
@@ -539,9 +642,17 @@ const isTranscribing = computed(() => isProcessing.value && progressMsg.value.in
 
 /* ── Resize handle ── */
 .panel-resize-handle {
-  width: 1px;
+  width: 5px;
   background: var(--border);
   flex-shrink: 0;
+  cursor: col-resize;
+  transition: background 0.15s;
+  position: relative;
+  z-index: 10;
+}
+.panel-resize-handle:hover,
+.panel-resize-handle:active {
+  background: var(--accent, #4f8ef7);
 }
 
 /* ── Main content ── */
@@ -549,20 +660,22 @@ const isTranscribing = computed(() => isProcessing.value && progressMsg.value.in
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  background: #0A0A0A;
+  overflow: auto;
+  background: var(--surface);
 }
 
 /* ── Player area ── */
 .player-area {
-  flex: 1;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0A0A0A;
-  overflow: hidden;
-  min-height: 0;
+  background: #000;
+  width: 100%;
+  max-width: 1280px;
+  height: 720px;
+  flex-shrink: 0;
+  align-self: center;
 }
 
 .player-wrap {
@@ -706,6 +819,49 @@ const isTranscribing = computed(() => isProcessing.value && progressMsg.value.in
   border-top-color: rgba(0,0,0,0.7);
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Regenerate dropdown ── */
+.regen-wrap {
+  position: relative;
+}
+.regen-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 8px;
+}
+.regen-btn.active {
+  background: var(--surface-subtle);
+  border-color: var(--border);
+}
+.regen-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 100;
+  overflow: hidden;
+}
+.regen-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 14px;
+  font-size: 12.5px;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.regen-item:hover:not(:disabled) { background: var(--surface-subtle); }
+.regen-item:disabled { opacity: 0.4; cursor: default; }
 
 /* ── VideoPlayer override: fill player-area ── */
 .player-wrap :deep(.video-wrap) {

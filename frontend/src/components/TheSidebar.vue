@@ -6,9 +6,10 @@ const route = useRoute()
 const collapsed = ref(false)
 
 const nav = [
-  { label: 'Projects', to: '/projects', icon: '⊞' },
-  { label: 'Voices',   to: '/voices',   icon: '◎' },
-  { label: 'Settings', to: '/settings', icon: '⚙' },
+  { label: 'Projects',        to: '/projects', icon: '⊞' },
+  { label: 'Voices',          to: '/voices',   icon: '◎' },
+  { label: 'Text to Speech',  to: '/tts',      icon: '♪' },
+  { label: 'Settings',        to: '/settings', icon: '⚙' },
 ]
 </script>
 
