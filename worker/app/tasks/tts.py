@@ -7,15 +7,11 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-# Silence TTS library's own verbose WARNING-level logs (download notices, model info, sentence splits)
 logging.getLogger("TTS").setLevel(logging.ERROR)
-# Silence transformers verbose warnings (GPT2InferenceModel generative capabilities, etc.)
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
-# Suppress torch.load FutureWarning from inside TTS and transformers (weights_only default change)
 warnings.filterwarnings("ignore", category=FutureWarning, module=r"TTS\..*")
 warnings.filterwarnings("ignore", category=FutureWarning, module=r"transformers\..*")
-# Suppress attention mask UserWarning from transformers generation
 warnings.filterwarnings("ignore", message=".*attention mask.*", category=UserWarning)
 
 _tts = None
@@ -25,15 +21,15 @@ def get_tts():
     global _tts
     if _tts is None:
         from TTS.api import TTS
+        from app.config import settings
         device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Loading XTTS v2 on {device}...")
-        _tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+        _tts = TTS(settings.XTTS_MODEL).to(device)
         logger.info("XTTS v2 ready")
     return _tts
 
 
 def release_model() -> None:
-    """Free XTTS VRAM."""
     global _tts
     if _tts is not None:
         logger.info("Releasing XTTS v2 from VRAM")
@@ -44,9 +40,6 @@ def release_model() -> None:
 
 
 def synthesize_builtin(text: str, output_path: str, speaker_name: str) -> bool:
-    """
-    Synthesize text to WAV using an XTTS v2 built-in speaker name.
-    """
     logger.info(f"Synthesizing (builtin speaker={speaker_name}): '{text[:50]}'")
     try:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -65,7 +58,7 @@ def synthesize_builtin(text: str, output_path: str, speaker_name: str) -> bool:
 
 def synthesize(text: str, output_path: str, speaker: str, ref_text: str = "") -> bool:
     """
-    Synthesize text to WAV at output_path using XTTS v2 zero-shot voice cloning.
+    Synthesize text to WAV using XTTS v2 zero-shot voice cloning.
 
     speaker — path to a reference WAV (3–30s of clean speech).
     """

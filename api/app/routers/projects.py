@@ -34,6 +34,13 @@ async def create_project(youtube_url: str, download_from_youtube: bool = True):
 
     return ProjectCreationResponse(project_id=project_id, message="Project created successfully", metadata=metadata)
 
+@router.post("/create-blank")
+async def create_blank_project(title: str = "Untitled project"):
+    metadata = {"title": title}
+    project_id = await projects.create_project(metadata)
+    storage.create_folder(project_id)
+    return ProjectCreationResponse(project_id=project_id, message="Project created successfully", metadata=metadata)
+
 @router.get("/list_projects")
 async def list_projects():
     projects_list = await projects.list_projects()

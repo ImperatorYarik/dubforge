@@ -49,6 +49,18 @@ export const useProjectsStore = defineStore('projects', () => {
     }
   }
 
+  async function createBlankProject(title) {
+    error.value = null
+    try {
+      const { data } = await projectsApi.createBlankProject(title)
+      await fetchProjects()
+      return data
+    } catch (e) {
+      error.value = e.response?.data?.detail ?? e.message
+      throw e
+    }
+  }
+
   async function deleteProject(projectId) {
     error.value = null
     try {
@@ -60,5 +72,5 @@ export const useProjectsStore = defineStore('projects', () => {
     }
   }
 
-  return { projects, currentProject, loading, error, fetchProjects, fetchProject, createProject, deleteProject }
+  return { projects, currentProject, loading, error, fetchProjects, fetchProject, createProject, createBlankProject, deleteProject }
 })

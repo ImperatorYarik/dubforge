@@ -4,6 +4,8 @@ import logging
 import subprocess
 import sys
 
+from app.models.audio import SeparationResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,24 +19,24 @@ def _extract_audio(video_path: str, output_path: str) -> str:
         logger.error(f"Error extracting audio: {e}")
         return ""
 
-def separate_sources(audio_path: str, output_dir: str) -> tuple[str, str]:
+
+def separate_sources(audio_path: str, output_dir: str) -> SeparationResult:
+    logger.info(f"Separating sources from '{audio_path}' into '{output_dir}'")
+    os.makedirs(output_dir, exist_ok=True)
+    _extract_audio(audio_path, os.path.join(output_dir, "audio.wav"))
     try:
-        logger.info(f"Separating sources from '{audio_path}' into '{output_dir}'")
-        os.makedirs(output_dir, exist_ok=True)
-        _extract_audio(audio_path, os.path.join(output_dir, "audio.wav"))
         subprocess.run([
             sys.executable, "-m", "demucs",
             "--two-stems", "vocals",
             "--out", output_dir,
             audio_path
         ], check=True)
-        
-        name = os.path.splitext(os.path.basename(audio_path))[0]
-        logger.info(f"Source separation complete. Outputs in: {output_dir}")
-        return (
-            f"{output_dir}/htdemucs/{name}/vocals.wav",
-            f"{output_dir}/htdemucs/{name}/no_vocals.wav"
-        )
     except subprocess.CalledProcessError as e:
-        logger.error(f"Error separating sources: {e}")
-        return False
+        raise RuntimeError(f"Demucs source separation failed: {e}") from e
+
+    name = os.path.splitext(os.path.basename(audio_path))[0]
+    logger.info(f"Source separation complete. Outputs in: {output_dir}")
+    return SeparationResult(
+        vocals_path=f"{output_dir}/htdemucs/{name}/vocals.wav",
+        no_vocals_path=f"{output_dir}/htdemucs/{name}/no_vocals.wav",
+    )

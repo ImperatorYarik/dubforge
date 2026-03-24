@@ -14,12 +14,11 @@ celery.conf.update(
     result_serializer='json',
     accept_content=['json'],
     timezone='UTC',
-    worker_pool='solo',  # no forking — required for CUDA
+    worker_pool='solo',
 )
 
 
 @worker_process_init.connect
 def init_model(**kwargs):
-    """Pre-load the Whisper model when the worker process starts."""
-    from app.tasks.transcribe import get_model
-    get_model()
+    from app.services.model_manager import model_manager
+    model_manager.get_whisper()
