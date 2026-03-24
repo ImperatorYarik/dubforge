@@ -12,15 +12,15 @@ router = APIRouter()
 
 @router.post("/upload", response_model=VideoUploadResponse)
 async def upload_video(file: UploadFile = File(...), project_id: str = "default_folder"):
-    video_id = await videos.add_video(project_id, video_url)
-    object_name = project_id + f'/{video_id}.' + file.filename.split('.')[-1]
-
-
+    import uuid as _uuid
+    ext = file.filename.rsplit('.', 1)[-1] if file.filename and '.' in file.filename else 'mp4'
+    object_name = f"{project_id}/{_uuid.uuid4()}.{ext}"
     video_url = f"{storage.get_base_url()}/{object_name}"
     if storage.upload_file(file, object_name):
-        return VideoUploadResponse(project_id=project_id, message="Video uploaded successfully", upload_url=f"{storage.get_base_url()}/{object_name}")
+        await videos.add_video(project_id, video_url)
+        return VideoUploadResponse(project_id=project_id, message="Video uploaded successfully", upload_url=video_url)
     else:
-        return VideoUploadResponse(project_id=project_id, message="Failed to upload video", upload_url=f"{storage.get_base_url()}/{object_name}")
+        return VideoUploadResponse(project_id=project_id, message="Failed to upload video", upload_url=video_url)
 
 
 @router.get("/list_videos", response_model=list[VideoResponse])

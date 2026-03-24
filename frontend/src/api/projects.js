@@ -6,6 +6,12 @@ export function createProject(youtubeUrl, downloadFromYoutube = true) {
   })
 }
 
+export function createBlankProject(title) {
+  return client.post('/projects/create-blank', null, {
+    params: { title },
+  })
+}
+
 export function listProjects() {
   return client.get('/projects/list_projects')
 }

@@ -2,14 +2,17 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectsStore } from '@/stores/projects'
+import { useVideosStore } from '@/stores/videos'
 import { useToast } from '@/composables/useToast'
 import DropZone from '@/components/DropZone.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 
 const router = useRouter()
 const store = useProjectsStore()
+const videosStore = useVideosStore()
 const toast = useToast()
 const showCreate = ref(false)
+const uploading = ref(false)
 
 async function onDeleteProject(event, projectId) {
   event.preventDefault()
@@ -23,6 +26,22 @@ async function onDeleteProject(event, projectId) {
 }
 
 onMounted(() => store.fetchProjects())
+
+async function onFile(file) {
+  uploading.value = true
+  try {
+    const title = file.name.replace(/\.[^/.]+$/, '')
+    const project = await store.createBlankProject(title)
+    await videosStore.uploadVideo(file, project.project_id)
+    toast.success('Project created')
+    showCreate.value = false
+    router.push({ name: 'project-detail', params: { id: project.project_id } })
+  } catch {
+    toast.error('Failed to upload video')
+  } finally {
+    uploading.value = false
+  }
+}
 
 async function onYoutubeUrl(url) {
   try {
@@ -60,7 +79,8 @@ function formatDate(d) {
 
     <!-- Create panel -->
     <div v-if="showCreate" class="create-panel">
-      <DropZone @youtube-url="onYoutubeUrl" />
+      <DropZone @youtube-url="onYoutubeUrl" @file="onFile" :disabled="uploading" />
+      <p v-if="uploading" class="uploading-hint">Uploading video…</p>
     </div>
 
     <!-- Recent projects -->
@@ -94,7 +114,7 @@ function formatDate(d) {
       <!-- Empty state -->
       <div v-else-if="!store.projects.length" class="empty">
         <p>No projects yet</p>
-        <p class="empty-hint">Paste a YouTube URL above to get started.</p>
+        <p class="empty-hint">Drag &amp; drop a video file or paste a YouTube URL above to get started.</p>
       </div>
 
       <!-- Table -->
@@ -163,6 +183,13 @@ function formatDate(d) {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface-subtle);
+}
+
+.uploading-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
 }
 
 /* ---- Section ---- */

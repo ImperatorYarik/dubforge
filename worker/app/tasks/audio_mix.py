@@ -3,6 +3,9 @@ import subprocess
 import logging
 import json
 
+from app.config import settings
+from app.models.segment import TranscriptSegment
+
 logger = logging.getLogger(__name__)
 
 
@@ -16,7 +19,7 @@ def get_duration(path: str) -> float:
 
 
 def build_atempo_filter(ratio: float) -> str:
-    """Build chained atempo filter string for any ratio."""
+    """Build chained atempo filter string for ratios outside the [0.5, 2.0] single-filter range."""
     filters = []
     r = ratio
     while r > 2.0:
@@ -30,16 +33,9 @@ def build_atempo_filter(ratio: float) -> str:
 
 
 def stretch_clip(input_wav: str, output_wav: str, target_duration: float) -> bool:
-    """Time-stretch input_wav to fit within target_duration seconds.
-
-    Ratio is clamped to [0.75, 1.5] to keep speech intelligible — extreme values
-    (chipmunk / sloth) are worse than slight timing drift. The output is hard-trimmed
-    to target_duration with a 50ms fade-out so any cutoff doesn't bleed into the
-    next segment.
-    """
     src_dur = get_duration(input_wav)
     ratio = src_dur / target_duration
-    clamped = max(0.75, min(ratio, 1.5))
+    clamped = max(settings.ATEMPO_MIN, min(ratio, settings.ATEMPO_MAX))
 
     atempo = build_atempo_filter(clamped)
     fade_start = max(0.0, target_duration - 0.05)
@@ -63,30 +59,20 @@ def stretch_clip(input_wav: str, output_wav: str, target_duration: float) -> boo
 
 def build_dubbed_audio(
     original_audio: str,
-    segments: list[dict],
+    segments: list[TranscriptSegment],
     output_wav: str,
-    duck_volume: float = 0.1,
+    duck_volume: float = settings.DUCK_VOLUME,
 ) -> bool:
-    """
-    Mix original audio (ducked during speech) with TTS clips.
-    
-    segments: each dict must have: start, end, tts_wav (path to stretched TTS clip)
-    duck_volume: 0.0 = silence original during speech, 1.0 = no ducking
-    """
     total_dur = get_duration(original_audio)
 
     inputs = ["-i", original_audio]
     filter_parts = []
     labels = []
 
-    if duck_volume == 0.0:
-        # Completely mute the original — don't include it in the mix at all
-        pass
-    else:
-        # Build volume envelope: 1.0 normally, duck_volume during speech segments
+    if duck_volume != 0.0:
         if segments:
             duck_parts = "+".join([
-                f"between(t,{s['start']},{s['end']})*{duck_volume - 1}"
+                f"between(t,{s.start},{s.end})*{duck_volume - 1}"
                 for s in segments
             ])
             duck_expr = f"1+{duck_parts}"
@@ -96,18 +82,14 @@ def build_dubbed_audio(
         labels.append("[orig]")
 
     for i, seg in enumerate(segments, start=1):
-        inputs += ["-i", seg["tts_wav"]]
-        delay_ms = int(seg["start"] * 1000)
-        filter_parts.append(
-            f"[{i}:a]adelay={delay_ms}|{delay_ms}[tts{i}]"
-        )
+        inputs += ["-i", seg.tts_wav]
+        delay_ms = int(seg.start * 1000)
+        filter_parts.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[tts{i}]")
         labels.append(f"[tts{i}]")
 
     n = len(labels)
     all_inputs = "".join(labels)
-    filter_parts.append(
-        f"{all_inputs}amix=inputs={n}:duration=longest:normalize=0[out]"
-    )
+    filter_parts.append(f"{all_inputs}amix=inputs={n}:duration=longest:normalize=0[out]")
 
     filter_complex = "; ".join(filter_parts)
 
