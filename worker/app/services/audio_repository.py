@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class AudioRepository:
+    def _get_video_doc(self, video_id: str) -> dict | None:
+        return videos_collection.find_one({"video_id": video_id})
+
     def download_cached_separation(
         self, video_id: str, tmp_dir: str
     ) -> SeparationResult | None:

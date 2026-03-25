@@ -4,18 +4,25 @@ import { useRouter } from 'vue-router'
 import { useProjectsStore } from '@/stores/projects'
 import { useVideosStore } from '@/stores/videos'
 import { useToast } from '@/composables/useToast'
-import DropZone from '@/components/DropZone.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
+import * as videosApi from '@/api/videos'
 
 const router = useRouter()
 const store = useProjectsStore()
 const videosStore = useVideosStore()
 const toast = useToast()
+
 const showCreate = ref(false)
 const uploading = ref(false)
+const youtubeUrl = ref('')
+const newProjectName = ref('')
+const createMode = ref('file')  // 'file' | 'youtube' | 'blank'
+const isDragOver = ref(false)
+
+onMounted(() => store.fetchProjects())
 
 async function onDeleteProject(event, projectId) {
-  event.preventDefault()
+  event.stopPropagation()
   if (!confirm('Delete this project? This cannot be undone.')) return
   try {
     await store.deleteProject(projectId)
@@ -25,17 +32,24 @@ async function onDeleteProject(event, projectId) {
   }
 }
 
-onMounted(() => store.fetchProjects())
+function onDragOver(e) { e.preventDefault(); isDragOver.value = true }
+function onDragLeave() { isDragOver.value = false }
+function onDrop(e) {
+  e.preventDefault()
+  isDragOver.value = false
+  const file = e.dataTransfer?.files?.[0]
+  if (file && file.type.startsWith('video/')) handleFile(file)
+}
 
-async function onFile(file) {
+async function handleFile(file) {
   uploading.value = true
   try {
     const title = file.name.replace(/\.[^/.]+$/, '')
     const project = await store.createBlankProject(title)
-    await videosStore.uploadVideo(file, project.project_id)
+    await videosApi.uploadVideo(file, project.project_id)
     toast.success('Project created')
     showCreate.value = false
-    router.push({ name: 'project-detail', params: { id: project.project_id } })
+    router.push({ name: 'dub' })
   } catch {
     toast.error('Failed to upload video')
   } finally {
@@ -43,289 +57,198 @@ async function onFile(file) {
   }
 }
 
-async function onYoutubeUrl(url) {
+async function onYoutubeSubmit() {
+  if (!youtubeUrl.value) return
   try {
-    const project = await store.createProject(url, true)
+    await store.createProject(youtubeUrl.value, true)
     toast.success('Project created')
     showCreate.value = false
-    router.push({ name: 'project-detail', params: { id: project.project_id } })
+    youtubeUrl.value = ''
+    router.push({ name: 'dub' })
   } catch {
     toast.error('Failed to create project')
   }
 }
 
+async function onBlankSubmit() {
+  if (!newProjectName.value.trim()) return
+  try {
+    await store.createBlankProject(newProjectName.value.trim())
+    toast.success('Project created')
+    showCreate.value = false
+    newProjectName.value = ''
+  } catch {
+    toast.error('Failed to create project')
+  }
+}
+
+function selectProject(id) {
+  store.setCurrentProject(id)
+  router.push({ name: 'dub' })
+}
+
 function formatDate(d) {
   const date = new Date(d)
   const now = new Date()
-  const diffMs = now - date
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  const diffDays = Math.floor((now - date) / 86400000)
   if (diffDays === 0) return 'Today'
   if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return `${diffDays} days ago`
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`
+  if (diffDays < 7) return `${diffDays}d ago`
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 </script>
 
 <template>
   <div class="view">
-    <!-- Page header -->
     <div class="page-header">
-      <h1 class="page-title">Projects</h1>
+      <div>
+        <h1 class="page-title">Projects</h1>
+        <p class="page-sub">Select a project to begin dubbing or transcription</p>
+      </div>
       <button class="btn btn-primary" @click="showCreate = !showCreate">
         + New Project
       </button>
     </div>
 
-    <!-- Create panel -->
+    <!-- Create Panel -->
     <div v-if="showCreate" class="create-panel">
-      <DropZone @youtube-url="onYoutubeUrl" @file="onFile" :disabled="uploading" />
-      <p v-if="uploading" class="uploading-hint">Uploading video…</p>
-    </div>
-
-    <!-- Recent projects -->
-    <section class="section">
-      <div class="section-header">
-        <span class="section-title">Recent Projects</span>
+      <div class="create-tabs">
+        <button :class="['tab', { active: createMode === 'file' }]" @click="createMode = 'file'">Upload File</button>
+        <button :class="['tab', { active: createMode === 'youtube' }]" @click="createMode = 'youtube'">YouTube URL</button>
+        <button :class="['tab', { active: createMode === 'blank' }]" @click="createMode = 'blank'">Blank Project</button>
       </div>
 
-      <!-- Skeleton loading -->
+      <!-- File upload -->
+      <div
+        v-if="createMode === 'file'"
+        class="dropzone"
+        :class="{ dragover: isDragOver, uploading }"
+        @dragover="onDragOver"
+        @dragleave="onDragLeave"
+        @drop="onDrop"
+        @click="$refs.fileInput.click()"
+      >
+        <input ref="fileInput" type="file" accept="video/*" style="display:none" @change="e => handleFile(e.target.files[0])" />
+        <div v-if="uploading" class="dz-hint">Creating project…</div>
+        <div v-else class="dz-idle">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+          <p class="dz-title">Drop a video file</p>
+          <p class="dz-sub">A new project will be created automatically</p>
+        </div>
+      </div>
+
+      <!-- YouTube -->
+      <div v-if="createMode === 'youtube'" class="form-group">
+        <input class="input" v-model="youtubeUrl" placeholder="https://youtube.com/watch?v=…" />
+        <button class="btn btn-primary" @click="onYoutubeSubmit" :disabled="!youtubeUrl">Create from YouTube</button>
+      </div>
+
+      <!-- Blank -->
+      <div v-if="createMode === 'blank'" class="form-group">
+        <input class="input" v-model="newProjectName" placeholder="Project name" @keyup.enter="onBlankSubmit" />
+        <button class="btn btn-primary" @click="onBlankSubmit" :disabled="!newProjectName.trim()">Create</button>
+      </div>
+    </div>
+
+    <!-- Project list -->
+    <div class="projects-list">
       <template v-if="store.loading">
-        <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Created at</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="n in 4" :key="n" class="skeleton-row">
-                <td><SkeletonBlock width="260px" height="13px" /></td>
-                <td><SkeletonBlock width="80px" height="13px" /></td>
-                <td></td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="project-card skeleton-card" v-for="n in 4" :key="n">
+          <SkeletonBlock width="100%" height="16px" />
+          <SkeletonBlock width="80px" height="11px" style="margin-top:8px" />
         </div>
       </template>
 
-      <!-- Empty state -->
       <div v-else-if="!store.projects.length" class="empty">
         <p>No projects yet</p>
-        <p class="empty-hint">Drag &amp; drop a video file or paste a YouTube URL above to get started.</p>
+        <p class="empty-sub">Create a project to get started</p>
       </div>
 
-      <!-- Table -->
-      <div v-else class="table-wrap">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Created at</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="p in store.projects"
-              :key="p.project_id"
-              class="table-row"
-              @click="router.push({ name: 'project-detail', params: { id: p.project_id } })"
-            >
-              <td class="col-name">
-                <div class="project-thumb">
-                  <img v-if="p.metadata?.thumbnail" :src="p.metadata.thumbnail" class="thumb-img" alt="" />
-                  <div v-else class="thumb-fallback">▶</div>
-                </div>
-                <span class="project-name">{{ p.metadata?.title || 'Untitled project' }}</span>
-              </td>
-              <td class="col-date">{{ formatDate(p.created_at) }}</td>
-              <td class="col-actions">
-                <button
-                  class="action-btn"
-                  title="Delete"
-                  @click.stop="onDeleteProject($event, p.project_id)"
-                >···</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div
+        v-else
+        v-for="p in store.projects"
+        :key="p.project_id"
+        class="project-card"
+        :class="{ current: p.project_id === store.currentProjectId }"
+        @click="selectProject(p.project_id)"
+      >
+        <div class="card-thumb">
+          <img v-if="p.metadata?.thumbnail" :src="p.metadata.thumbnail" alt="" />
+          <div v-else class="thumb-fallback">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="card-name">{{ p.metadata?.title || 'Untitled' }}</p>
+          <p class="card-date">{{ formatDate(p.created_at) }}</p>
+        </div>
+        <div class="card-actions">
+          <span v-if="p.project_id === store.currentProjectId" class="badge badge-ok">Active</span>
+          <button class="action-btn" title="Delete" @click.stop="onDeleteProject($event, p.project_id)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          </button>
+        </div>
       </div>
-    </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.view {
-  padding: 40px 48px;
-  max-width: 960px;
-}
+.view { padding: 28px 32px; max-width: 900px; }
 
-/* ---- Page Header ---- */
-.page-header {
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; }
+.page-title { font-family: var(--font-display); font-size: 32px; letter-spacing: 0.04em; color: var(--text); }
+.page-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+/* Create panel */
+.create-panel { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 28px; }
+.create-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+.tab { padding: 6px 14px; border-radius: var(--radius); font-size: 12px; font-family: var(--font-mono); background: transparent; border: 1px solid var(--border); color: var(--muted); cursor: pointer; }
+.tab:hover { background: var(--bg4); color: var(--text); }
+.tab.active { background: var(--amber-g); border-color: var(--b-amber); color: var(--amber); }
+
+.dropzone { border: 1px dashed var(--border); border-radius: var(--radius-lg); padding: 28px; text-align: center; cursor: pointer; transition: all 0.15s; background: var(--bg4); }
+.dropzone:hover, .dropzone.dragover { border-color: var(--b-amber); background: var(--amber-g); }
+.dz-idle { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); }
+.dz-title { font-size: 13px; color: var(--text); font-weight: 500; }
+.dz-sub { font-size: 11px; }
+.dz-hint { font-size: 12px; color: var(--amber); font-family: var(--font-mono); }
+
+.form-group { display: flex; gap: 10px; }
+.form-group .input { flex: 1; }
+
+/* Project list */
+.projects-list { display: flex; flex-direction: column; gap: 8px; }
+
+.project-card {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 32px;
-}
-.page-title {
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-}
-
-/* ---- Create Panel ---- */
-.create-panel {
-  margin-bottom: 36px;
-  padding: 24px;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--bg3);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--surface-subtle);
-}
-
-.uploading-hint {
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-/* ---- Section ---- */
-.section { margin-top: 8px; }
-
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-.section-title {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-/* ---- Table ---- */
-.table-wrap {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table thead tr {
-  border-bottom: 1px solid var(--border);
-}
-
-.table th {
-  padding: 10px 16px;
-  text-align: left;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
-  background: var(--surface-subtle);
-  white-space: nowrap;
-}
-
-.table-row {
   cursor: pointer;
-  border-bottom: 1px solid var(--border);
-  transition: background 0.1s;
+  transition: border-color 0.1s, background 0.1s;
 }
-.table-row:last-child { border-bottom: none; }
-.table-row:hover { background: var(--surface-subtle); }
+.project-card:hover { border-color: var(--b-amber); background: var(--bg4); }
+.project-card.current { border-color: var(--b-amber); }
+.skeleton-card { min-height: 62px; padding: 16px; cursor: default; }
+.skeleton-card:hover { border-color: var(--border); background: var(--bg3); }
 
-.skeleton-row td { padding: 14px 16px; }
+.card-thumb { width: 56px; height: 36px; border-radius: 4px; overflow: hidden; background: var(--bg4); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.card-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.thumb-fallback { color: var(--dim); }
 
-.col-name {
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+.card-body { flex: 1; min-width: 0; }
+.card-name { font-size: 13.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-date { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--font-mono); }
 
-.col-date {
-  padding: 12px 16px;
-  font-size: 13px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
+.card-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.action-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; color: var(--muted); background: transparent; border: none; cursor: pointer; opacity: 0; transition: all 0.1s; }
+.project-card:hover .action-btn { opacity: 1; }
+.action-btn:hover { background: var(--red-g); color: var(--red); }
 
-.col-actions {
-  padding: 12px 16px;
-  text-align: right;
-  width: 40px;
-}
-
-.project-thumb {
-  width: 40px;
-  height: 28px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--surface-subtle);
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.thumb-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.thumb-fallback {
-  font-size: 12px;
-  color: var(--text-placeholder);
-}
-
-.project-name {
-  font-size: 13.5px;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 500px;
-}
-
-.action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  font-size: 15px;
-  color: var(--text-muted);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.1s, background 0.1s;
-  letter-spacing: 1px;
-}
-.table-row:hover .action-btn { opacity: 1; }
-.action-btn:hover { background: var(--border); color: var(--text); }
-
-/* ---- Empty ---- */
-.empty {
-  padding: 56px 0;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 14px;
-}
-.empty-hint {
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--text-placeholder);
-}
+.empty { padding: 56px 0; text-align: center; color: var(--muted); }
+.empty-sub { font-size: 12px; color: var(--dim); margin-top: 4px; }
 </style>

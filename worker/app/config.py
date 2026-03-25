@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     DUCK_VOLUME: float = 0.1
     ATEMPO_MIN: float = 0.75
     ATEMPO_MAX: float = 1.5
+    MIX_SAMPLE_RATE: int = 48000
+    AAC_BITRATE: str = "192k"
     VOICE_REF_TARGET_DURATION: float = 8.0
     VOICE_REF_MIN_CHUNK_DURATION: float = 0.5
 
@@ -21,6 +23,7 @@ class Settings(BaseSettings):
     WHISPER_COMPUTE_TYPE: str = "int8"
     WHISPER_BEAM_SIZE: int = 2
     WHISPER_VAD_MIN_SILENCE_MS: int = 300
+    PHRASE_GAP_THRESHOLD_MS: int = 2000
 
     XTTS_MODEL: str = "tts_models/multilingual/multi-dataset/xtts_v2"
 

@@ -1,9 +1,16 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
+
+
+class TranscriptSegmentSchema(BaseModel):
+    start: float
+    end: float
+    text: str
 
 
 class VideoUploadResponse(BaseModel):
+    video_id: str
     project_id: str
     message: str
     upload_url: str
@@ -14,7 +21,12 @@ class VideoResponse(BaseModel):
     project_id: str
     video_url: str
     transcription: Optional[str] = None
+    transcript_segments: Optional[List[TranscriptSegmentSchema]] = None
     transcript_url: Optional[str] = None
     dubbed_url: Optional[str] = None
+    vocals_url: Optional[str] = None
+    no_vocals_url: Optional[str] = None
+    detected_language: Optional[str] = None
+    duration_seconds: Optional[float] = None
     created_at: datetime
     updated_at: datetime

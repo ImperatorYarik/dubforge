@@ -8,7 +8,7 @@ import { useToast } from '@/composables/useToast'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import TranscriptPanel from '@/components/TranscriptPanel.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
-import { getDubbedStreamUrl } from '@/api/videos'
+import { getDubbedStreamUrl, getVocalsStreamUrl, getNoVocalsStreamUrl } from '@/api/videos'
 
 const route  = useRoute()
 const router = useRouter()
@@ -17,38 +17,22 @@ const videosStore   = useVideosStore()
 const jobsStore     = useJobsStore()
 const toast = useToast()
 
-const dubbedDirectUrl = ref(null)
-const translatedSegs  = ref([])
-const isProcessing    = ref(false)
-const progressPct     = ref(0)
-const progressMsg     = ref('')
-const activeTab       = ref('original')  // 'original' | 'dubbed'
-const panelOpen       = ref(true)
+const dubbedDirectUrl  = ref(null)
+const vocalsDirectUrl  = ref(null)
+const noVocalsDirectUrl = ref(null)
+const translatedSegs   = ref([])
+const isProcessing     = ref(false)
+const progressPct      = ref(0)
+const progressMsg      = ref('')
 
 const transcription   = ref('')
 const translateMode   = ref(false)
-const panelWidth      = ref(280)
 const showRegenMenu   = ref(false)
-const currentJobType  = ref(null)  // 'dub' | 'transcribe' | null
+const currentJobType  = ref(null)  // 'dub' | 'transcribe' | 'separate' | null
+const transcriptOpen  = ref(false)
 
 const hasExtractedAudio = computed(() => !!sourceVideo.value?.vocals_url)
 const hasTranscription  = computed(() => !!sourceVideo.value?.transcription || !!transcription.value)
-
-function startResize(e) {
-  e.preventDefault()
-  const startX = e.clientX
-  const startW = panelWidth.value
-  function onMove(ev) {
-    const delta = ev.clientX - startX
-    panelWidth.value = Math.min(600, Math.max(160, startW + delta))
-  }
-  function onUp() {
-    document.removeEventListener('mousemove', onMove)
-    document.removeEventListener('mouseup', onUp)
-  }
-  document.addEventListener('mousemove', onMove)
-  document.addEventListener('mouseup', onUp)
-}
 
 function _closeRegenMenu() { showRegenMenu.value = false }
 onBeforeUnmount(() => document.removeEventListener('click', _closeRegenMenu))
@@ -61,19 +45,45 @@ onMounted(async () => {
   ])
   if (sourceVideo.value?.transcription) {
     transcription.value = sourceVideo.value.transcription
+    translatedSegs.value = _parseSegments(sourceVideo.value.transcription)
   }
+  await _loadStreams()
+})
+
+async function _loadStreams() {
+  if (!sourceVideo.value) return
   if (sourceVideo.value?.dubbed_url) {
     try {
       const { data } = await getDubbedStreamUrl(sourceVideo.value.video_id)
       dubbedDirectUrl.value = data.url
     } catch { /* no dubbed video */ }
   }
-})
+  if (sourceVideo.value?.vocals_url) {
+    try {
+      const { data } = await getVocalsStreamUrl(sourceVideo.value.video_id)
+      vocalsDirectUrl.value = data.url
+    } catch {}
+  }
+  if (sourceVideo.value?.no_vocals_url) {
+    try {
+      const { data } = await getNoVocalsStreamUrl(sourceVideo.value.video_id)
+      noVocalsDirectUrl.value = data.url
+    } catch {}
+  }
+}
 
 const project = computed(() => projectsStore.currentProject)
 const sourceVideo = computed(() =>
   videosStore.videosForProject(route.params.id)[0] ?? null
 )
+
+function _parseSegments(text) {
+  if (!text) return []
+  return text.split('\n').filter(l => l.trim()).map(l => {
+    const m = l.match(/\[(\d+\.\d+)s - (\d+\.\d+)s\] (.+)/)
+    return m ? { start: parseFloat(m[1]), end: parseFloat(m[2]), text: m[3] } : null
+  }).filter(Boolean)
+}
 
 function onProgress({ pct, message }) {
   progressPct.value = pct
@@ -96,6 +106,8 @@ async function generateTranscription() {
     )
     const updated = await videosStore.fetchVideo(sourceVideo.value.video_id)
     transcription.value = updated?.transcription ?? ''
+    translatedSegs.value = _parseSegments(transcription.value)
+    transcriptOpen.value = true
     toast.success('Transcription complete')
   } catch (e) {
     toast.error('Transcription failed: ' + e.message)
@@ -126,15 +138,12 @@ async function generateDub() {
         const { data } = await getDubbedStreamUrl(sourceVideo.value.video_id)
         dubbedDirectUrl.value = data.url
       } catch { dubbedDirectUrl.value = result.dubbed_url }
-      activeTab.value = 'dubbed'
     }
     const updated = await videosStore.fetchVideo(sourceVideo.value.video_id)
     if (updated?.transcription) {
       transcription.value = updated.transcription
-      translatedSegs.value = updated.transcription.split('\n').filter(l => l.trim()).map(l => {
-        const m = l.match(/\[(\d+\.\d+)s - (\d+\.\d+)s\] (.+)/)
-        return m ? { start: parseFloat(m[1]), end: parseFloat(m[2]), text: m[3] } : null
-      }).filter(Boolean)
+      translatedSegs.value = _parseSegments(updated.transcription)
+      transcriptOpen.value = true
     }
     toast.success('Dubbing complete')
   } catch (e) {
@@ -167,15 +176,12 @@ async function reDub() {
         const { data } = await getDubbedStreamUrl(sourceVideo.value.video_id)
         dubbedDirectUrl.value = data.url
       } catch { dubbedDirectUrl.value = result.dubbed_url }
-      activeTab.value = 'dubbed'
     }
     const updated = await videosStore.fetchVideo(sourceVideo.value.video_id)
     if (updated?.transcription) {
       transcription.value = updated.transcription
-      translatedSegs.value = updated.transcription.split('\n').filter(l => l.trim()).map(l => {
-        const m = l.match(/\[(\d+\.\d+)s - (\d+\.\d+)s\] (.+)/)
-        return m ? { start: parseFloat(m[1]), end: parseFloat(m[2]), text: m[3] } : null
-      }).filter(Boolean)
+      translatedSegs.value = _parseSegments(updated.transcription)
+      transcriptOpen.value = true
     }
     toast.success('Re-dub complete')
   } catch (e) {
@@ -195,12 +201,49 @@ function reTranscribe() {
 
 const isDubbing = computed(() => isProcessing.value && currentJobType.value === 'dub')
 const isTranscribing = computed(() => isProcessing.value && currentJobType.value === 'transcribe')
+const isSeparating = computed(() => isProcessing.value && currentJobType.value === 'separate')
+
+async function separateAudio() {
+  if (!sourceVideo.value) return
+  isProcessing.value = true
+  currentJobType.value = 'separate'
+  progressPct.value = 0
+  progressMsg.value = 'Starting…'
+  try {
+    const result = await jobsStore.separate(
+      route.params.id,
+      sourceVideo.value.video_id,
+      onProgress,
+    )
+    if (result?.vocals_url) {
+      try {
+        const { data } = await getVocalsStreamUrl(sourceVideo.value.video_id)
+        vocalsDirectUrl.value = data.url
+      } catch { vocalsDirectUrl.value = result.vocals_url }
+    }
+    if (result?.no_vocals_url) {
+      try {
+        const { data } = await getNoVocalsStreamUrl(sourceVideo.value.video_id)
+        noVocalsDirectUrl.value = data.url
+      } catch { noVocalsDirectUrl.value = result.no_vocals_url }
+    }
+    await videosStore.fetchVideo(sourceVideo.value.video_id)
+    toast.success('Audio separation complete')
+  } catch (e) {
+    toast.error('Separation failed: ' + e.message)
+  } finally {
+    isProcessing.value = false
+    currentJobType.value = null
+    progressPct.value = 0
+    progressMsg.value = ''
+  }
+}
 </script>
 
 <template>
-  <div class="workspace">
+  <div class="detail-page">
 
-    <!-- ── Top Bar ────────────────────────────────────────────── -->
+    <!-- ── Top Bar ─────────────────────────────────────────────── -->
     <header class="topbar">
       <div class="topbar-left">
         <button class="icon-btn" title="Back" @click="router.push({ name: 'projects' })">
@@ -208,17 +251,6 @@ const isTranscribing = computed(() => isProcessing.value && currentJobType.value
             <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <button class="icon-btn" :title="panelOpen ? 'Collapse panel' : 'Expand panel'" @click="panelOpen = !panelOpen">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
-            <path d="M5.5 2.5v11" stroke="currentColor" stroke-width="1.4"/>
-            <path v-if="panelOpen" d="M3 7l-1.5 1L3 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path v-else d="M3.5 7l1.5 1-1.5 1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
-
-      <div class="topbar-center">
         <span class="topbar-title">{{ project?.metadata?.title || 'Untitled project' }}</span>
       </div>
 
@@ -227,6 +259,14 @@ const isTranscribing = computed(() => isProcessing.value && currentJobType.value
           <input type="checkbox" v-model="translateMode" :disabled="isProcessing" />
           Translate
         </label>
+        <button
+          class="btn btn-ghost btn-sm"
+          :disabled="isProcessing || !sourceVideo"
+          @click="separateAudio"
+        >
+          <span v-if="isSeparating" class="spinner spinner-dark" />
+          Separate Audio
+        </button>
         <button
           class="btn btn-ghost btn-sm"
           :disabled="isProcessing || !sourceVideo"
@@ -244,7 +284,6 @@ const isTranscribing = computed(() => isProcessing.value && currentJobType.value
           Generate Dub
         </button>
 
-        <!-- Regenerate dropdown — only visible when audio was already extracted -->
         <div v-if="hasExtractedAudio" class="regen-wrap" @click.stop>
           <button
             class="btn btn-ghost btn-sm regen-btn"
@@ -274,213 +313,196 @@ const isTranscribing = computed(() => isProcessing.value && currentJobType.value
       </div>
     </header>
 
-    <!-- ── Body ──────────────────────────────────────────────── -->
-    <div class="body">
+    <div class="content">
 
-      <!-- Left panel: Files + Transcript -->
-      <aside class="left-panel" :class="{ collapsed: !panelOpen }" :style="panelOpen ? { width: panelWidth + 'px' } : {}">
-        <!-- Files section -->
-        <div class="panel-section">
-          <div class="panel-section-header">
-            <span class="panel-section-title">Files</span>
+      <!-- ── Processing banner ───────────────────────────────── -->
+      <div v-if="isProcessing" class="progress-banner">
+        <div class="banner-inner">
+          <span class="banner-spinner"></span>
+          <span class="banner-msg">{{ progressMsg || 'Processing…' }}</span>
+          <div class="banner-bar">
+            <div class="banner-fill" :style="{ width: progressPct + '%' }"></div>
           </div>
-
-          <div class="panel-label">Videos</div>
-
-          <div v-if="videosStore.loading" class="video-card-skeleton">
-            <SkeletonBlock width="100%" height="90px" radius="var(--radius)" />
-          </div>
-
-          <div v-else-if="sourceVideo" class="video-card" :class="{ active: activeTab === 'original' }" @click="activeTab = 'original'">
-            <div class="video-card-thumb">
-              <img v-if="project?.metadata?.thumbnail" :src="project.metadata.thumbnail" alt="" class="thumb-img" />
-              <div v-else class="thumb-fallback">▶</div>
-            </div>
-            <div class="video-card-info">
-              <p class="video-card-name">{{ project?.metadata?.title || 'Source video' }}</p>
-              <p class="video-card-meta">Original</p>
-            </div>
-          </div>
-
-          <div v-if="dubbedDirectUrl" class="video-card" :class="{ active: activeTab === 'dubbed' }" @click="activeTab = 'dubbed'">
-            <div class="video-card-thumb dubbed-thumb">
-              <span>▶</span>
-            </div>
-            <div class="video-card-info">
-              <p class="video-card-name">{{ project?.metadata?.title || 'Dubbed video' }}</p>
-              <p class="video-card-meta">Dubbed</p>
-            </div>
-          </div>
-
-          <div v-else-if="!sourceVideo && !videosStore.loading" class="panel-empty">
-            No video found.
-          </div>
+          <span class="banner-pct">{{ progressPct }}%</span>
         </div>
+      </div>
 
-        <div class="panel-divider" />
+      <!-- ── Videos grid ─────────────────────────────────────── -->
+      <div class="videos-grid">
 
-        <!-- Transcript section -->
-        <div class="panel-section panel-section-grow">
-          <div class="panel-section-header">
-            <span class="panel-section-title">Transcript</span>
+        <!-- Original video -->
+        <div class="video-cell">
+          <div class="cell-header">
+            <span class="cell-label">Original</span>
+            <span v-if="sourceVideo?.detected_language" class="cell-badge">
+              {{ sourceVideo.detected_language.toUpperCase() }}
+            </span>
+            <span v-if="sourceVideo?.duration_seconds" class="cell-badge cell-badge-dim">
+              {{ Math.round(sourceVideo.duration_seconds) }}s
+            </span>
           </div>
-
-          <template v-if="isTranscribing">
-            <TranscriptPanel :segments="[]" :loading="true" />
-          </template>
-          <div v-else-if="transcription" class="transcript-text">
-            <p v-for="(line, i) in transcription.split('\n').filter(l => l.trim())" :key="i">{{ line }}</p>
-          </div>
-          <div v-else class="panel-empty">
-            No transcript yet — click <strong>Transcribe</strong>.
-          </div>
-        </div>
-      </aside>
-
-      <!-- Divider / resize handle -->
-      <div class="panel-resize-handle" v-show="panelOpen" @mousedown="startResize" />
-
-      <!-- Main: video + controls -->
-      <main class="main">
-
-        <!-- Video player -->
-        <div class="player-area">
-
-          <!-- Processing overlay -->
-          <div v-if="isDubbing" class="processing-overlay">
-            <div class="processing-inner">
-              <div class="processing-spinner" />
-              <p class="processing-msg">{{ progressMsg || 'Processing…' }}</p>
-              <p class="processing-pct">{{ progressPct }}%</p>
-              <div class="processing-bar">
-                <div class="processing-fill" :style="{ width: progressPct + '%' }" />
-              </div>
+          <div class="cell-player">
+            <div v-if="videosStore.loading" class="player-skeleton">
+              <SkeletonBlock width="100%" height="100%" />
             </div>
-          </div>
-
-          <!-- Original video -->
-          <template v-if="activeTab === 'original'">
-            <div v-if="sourceVideo" class="player-wrap">
+            <template v-else-if="sourceVideo">
               <VideoPlayer :video-id="sourceVideo.video_id" />
-            </div>
+            </template>
             <div v-else class="player-empty">
-              <p>No video in this project.</p>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><rect x="2" y="2" width="20" height="20" rx="3"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
+              <p>No video in this project</p>
             </div>
-          </template>
-
-          <!-- Dubbed video -->
-          <template v-else-if="activeTab === 'dubbed'">
-            <div v-if="dubbedDirectUrl" class="player-wrap">
-              <video
-                :src="dubbedDirectUrl"
-                controls
-                class="dubbed-video"
-              />
-            </div>
-            <div v-else class="player-empty">
-              <p>No dubbed video yet.</p>
-              <p class="player-hint">Click <strong>Generate Dub</strong> to start.</p>
-            </div>
-          </template>
-        </div>
-
-        <!-- Tab bar -->
-        <div class="tab-bar">
-          <button class="tab-btn" :class="{ active: activeTab === 'original' }" @click="activeTab = 'original'">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/>
-              <path d="M5 4.5l4 2.5-4 2.5V4.5z" fill="currentColor"/>
-            </svg>
-            Original
-          </button>
-          <button
-            class="tab-btn"
-            :class="{ active: activeTab === 'dubbed', disabled: !dubbedDirectUrl }"
-            :disabled="!dubbedDirectUrl"
-            @click="dubbedDirectUrl && (activeTab = 'dubbed')"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/>
-              <path d="M4 4.5h6M4 7h4M4 9.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-            </svg>
-            Dubbed
-          </button>
-        </div>
-
-        <!-- Translated segments / timeline -->
-        <div v-if="translatedSegs.length || (isDubbing)" class="timeline-panel">
-          <div class="timeline-header">
-            <span class="panel-label" style="margin-bottom:0">Translated Script</span>
           </div>
-          <div class="timeline-scroll">
-            <TranscriptPanel
-              :segments="translatedSegs"
-              :loading="isDubbing"
-              :editable="true"
-            />
+          <div v-if="sourceVideo" class="cell-status">
+            <span :class="['status-pill', hasTranscription ? 'pill-ok' : 'pill-dim']">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              {{ hasTranscription ? 'Transcribed' : 'No transcript' }}
+            </span>
+            <span v-if="hasExtractedAudio" class="status-pill pill-ok">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              Separated
+            </span>
           </div>
         </div>
 
-      </main>
+        <!-- Dubbed video -->
+        <div class="video-cell">
+          <div class="cell-header">
+            <span class="cell-label">Dubbed</span>
+            <span v-if="dubbedDirectUrl" class="cell-badge cell-badge-ok">EN</span>
+          </div>
+          <div class="cell-player" :class="{ 'player-active': isDubbing }">
+            <div v-if="isDubbing" class="player-processing">
+              <div class="proc-spinner"></div>
+              <p class="proc-msg">{{ progressMsg || 'Generating dub…' }}</p>
+              <p class="proc-pct">{{ progressPct }}%</p>
+              <div class="proc-bar"><div class="proc-fill" :style="{ width: progressPct + '%' }"></div></div>
+            </div>
+            <template v-else-if="dubbedDirectUrl">
+              <video :src="dubbedDirectUrl" controls class="dubbed-video" />
+            </template>
+            <div v-else class="player-empty">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M8 12h8M8 8h5M8 16h6" stroke="currentColor" stroke-linecap="round"/></svg>
+              <p>No dubbed video yet</p>
+              <p class="empty-hint">Click <strong>Generate Dub</strong> to start</p>
+            </div>
+          </div>
+          <div class="cell-status">
+            <span :class="['status-pill', dubbedDirectUrl ? 'pill-ok' : 'pill-dim']">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              {{ dubbedDirectUrl ? 'Dubbed' : 'Not dubbed' }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Separated audio tracks ──────────────────────────── -->
+      <template v-if="vocalsDirectUrl || noVocalsDirectUrl || isSeparating">
+        <div class="section-header">
+          <span class="section-title">Separated Tracks</span>
+        </div>
+        <div class="audio-grid">
+          <div class="audio-cell" v-if="vocalsDirectUrl || isSeparating">
+            <div class="audio-cell-head">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+              <span>Vocals</span>
+            </div>
+            <div v-if="isSeparating" class="audio-skeleton">
+              <SkeletonBlock width="100%" height="40px" />
+            </div>
+            <audio v-else :src="vocalsDirectUrl" controls class="audio-el" />
+          </div>
+          <div class="audio-cell" v-if="noVocalsDirectUrl || isSeparating">
+            <div class="audio-cell-head">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span>Background</span>
+            </div>
+            <div v-if="isSeparating" class="audio-skeleton">
+              <SkeletonBlock width="100%" height="40px" />
+            </div>
+            <audio v-else :src="noVocalsDirectUrl" controls class="audio-el" />
+          </div>
+        </div>
+      </template>
+
+      <!-- ── Transcript ──────────────────────────────────────── -->
+      <div class="section-header transcript-toggle" @click="transcriptOpen = !transcriptOpen">
+        <span class="section-title">Transcript</span>
+        <span v-if="hasTranscription" class="section-count">{{ translatedSegs.length || '' }}</span>
+        <svg
+          width="14" height="14" viewBox="0 0 14 14" fill="none"
+          :style="{ transform: transcriptOpen ? 'rotate(180deg)' : '', transition: 'transform 0.2s' }"
+        >
+          <path d="M3 5l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <div v-if="transcriptOpen" class="transcript-body">
+        <template v-if="isTranscribing">
+          <TranscriptPanel :segments="[]" :loading="true" />
+        </template>
+        <template v-else-if="translatedSegs.length">
+          <TranscriptPanel :segments="translatedSegs" :editable="true" />
+        </template>
+        <div v-else-if="transcription" class="transcript-raw">
+          <p v-for="(line, i) in transcription.split('\n').filter(l => l.trim())" :key="i">{{ line }}</p>
+        </div>
+        <div v-else class="transcript-empty">
+          No transcript — click <strong>Transcribe</strong> to generate one.
+        </div>
+      </div>
+
     </div>
-
   </div>
 </template>
 
 <style scoped>
-/* ── Layout shell ── */
-.workspace {
+/* ── Page layout ── */
+.detail-page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
-  background: var(--surface);
+  min-height: 100vh;
+  background: var(--bg);
 }
 
 /* ── Top bar ── */
 .topbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   height: 48px;
-  padding: 0 16px;
+  padding: 0 20px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--bg2);
   flex-shrink: 0;
   gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 4px;
-  min-width: 80px;
-}
-
-.topbar-center {
+  gap: 10px;
+  min-width: 0;
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
 }
 
 .topbar-title {
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 500;
-  letter-spacing: -0.015em;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 400px;
 }
 
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 80px;
-  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .icon-btn {
@@ -490,210 +512,165 @@ const isTranscribing = computed(() => isProcessing.value && currentJobType.value
   width: 30px;
   height: 30px;
   border-radius: 6px;
-  color: var(--text-muted);
+  color: var(--muted);
   background: transparent;
   border: none;
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
 }
-.icon-btn:hover { background: var(--surface-subtle); color: var(--text); }
+.icon-btn:hover { background: var(--bg3); color: var(--text); }
 
 /* ── Translate toggle ── */
 .translate-toggle {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 12.5px;
-  color: var(--text-muted);
+  font-size: 12px;
+  color: var(--muted);
   cursor: pointer;
   user-select: none;
   padding: 4px 10px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: transparent;
   transition: border-color 0.15s, color 0.15s;
 }
-.translate-toggle.active { border-color: var(--text); color: var(--text); }
-.translate-toggle input { accent-color: var(--accent); }
+.translate-toggle.active { border-color: var(--b-amber); color: var(--amber); }
+.translate-toggle input { accent-color: var(--amber); }
 
-/* ── Body ── */
-.body {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
-
-/* ── Left panel ── */
-.left-panel {
-  flex-shrink: 0;
+/* ── Content area ── */
+.content {
+  max-width: 1440px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 28px 40px;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
-  overflow: hidden;
-  background: var(--surface);
-  transition: opacity 0.18s ease;
-}
-.left-panel.collapsed {
-  width: 0;
-  opacity: 0;
-  border-right: none;
+  gap: 0;
 }
 
-.panel-section {
-  padding: 16px 14px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex-shrink: 0;
+/* ── Progress banner ── */
+.progress-banner {
+  background: var(--amber-g);
+  border: 1px solid var(--b-amber);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  margin-bottom: 20px;
 }
-.panel-section-grow {
-  flex: 1;
-  overflow: hidden;
-  padding-bottom: 0;
-}
-
-.panel-section-header {
-  margin-bottom: 4px;
-}
-.panel-section-title {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  color: var(--text);
-}
-
-.panel-label {
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-
-.panel-divider {
-  height: 1px;
-  background: var(--border);
-  flex-shrink: 0;
-}
-
-.panel-empty {
-  font-size: 12.5px;
-  color: var(--text-placeholder);
-  padding: 12px 0 4px;
-}
-
-/* ── Video cards in left panel ── */
-.video-card {
-  display: flex;
-  gap: 10px;
-  padding: 8px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: background 0.1s;
-  border: 1px solid transparent;
-}
-.video-card:hover { background: var(--surface-subtle); }
-.video-card.active {
-  background: var(--surface-subtle);
-  border-color: var(--border);
-}
-
-.video-card-thumb {
-  width: 72px;
-  height: 48px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: #111;
-  flex-shrink: 0;
+.banner-inner {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12px;
 }
-.thumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.thumb-fallback { font-size: 16px; color: rgba(255,255,255,0.4); }
-.dubbed-thumb { background: #1a1a1a; }
-
-.video-card-info { min-width: 0; }
-.video-card-name {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--text);
+.banner-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,165,0,0.3);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+.banner-msg {
+  font-size: 12px;
+  color: var(--amber);
+  font-family: var(--font-mono);
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.video-card-meta {
-  font-size: 11.5px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-/* ── Transcript in left panel ── */
-.transcript-text {
-  font-size: 12.5px;
-  line-height: 1.65;
-  color: var(--text);
-  overflow-y: auto;
-  flex: 1;
-  padding-right: 4px;
-}
-.transcript-text p { margin: 0 0 5px; }
-
-/* ── Resize handle ── */
-.panel-resize-handle {
-  width: 5px;
-  background: var(--border);
+.banner-bar {
+  width: 120px;
+  height: 4px;
+  background: rgba(255,165,0,0.2);
+  border-radius: 2px;
+  overflow: hidden;
   flex-shrink: 0;
-  cursor: col-resize;
-  transition: background 0.15s;
-  position: relative;
-  z-index: 10;
 }
-.panel-resize-handle:hover,
-.panel-resize-handle:active {
-  background: var(--accent, #4f8ef7);
+.banner-fill {
+  height: 100%;
+  background: var(--amber);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+.banner-pct {
+  font-size: 11px;
+  color: var(--amber);
+  font-family: var(--font-mono);
+  min-width: 28px;
+  text-align: right;
+  flex-shrink: 0;
 }
 
-/* ── Main content ── */
-.main {
-  flex: 1;
+/* ── Videos grid ── */
+.videos-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.video-cell {
   display: flex;
   flex-direction: column;
-  overflow: auto;
-  background: var(--surface);
+  gap: 8px;
 }
 
-/* ── Player area ── */
-.player-area {
+.cell-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.cell-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.cell-badge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.cell-badge-ok {
+  background: rgba(0,200,150,0.1);
+  border-color: rgba(0,200,150,0.3);
+  color: var(--teal);
+}
+.cell-badge-dim {
+  color: var(--dim);
+}
+
+.cell-player {
+  background: #0a0a0a;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #000;
-  width: 100%;
-  max-width: 1280px;
-  height: 720px;
-  flex-shrink: 0;
-  align-self: center;
 }
 
-.player-wrap {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.cell-player.player-active {
+  border-color: var(--b-amber);
 }
 
-.dubbed-video {
-  max-width: 100%;
-  max-height: 100%;
+.player-skeleton {
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  display: block;
-  background: #000;
 }
 
 .player-empty {
@@ -701,107 +678,188 @@ const isTranscribing = computed(() => isProcessing.value && currentJobType.value
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  color: rgba(255,255,255,0.3);
-  font-size: 13px;
+  gap: 10px;
+  color: rgba(255,255,255,0.25);
+  font-size: 12.5px;
   text-align: center;
+  padding: 24px;
 }
-.player-hint { font-size: 12px; color: rgba(255,255,255,0.2); }
+.empty-hint {
+  font-size: 11.5px;
+  color: rgba(255,255,255,0.15);
+}
+.empty-hint strong { color: rgba(255,255,255,0.3); }
 
-/* ── Processing overlay ── */
-.processing-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(10,10,10,0.88);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-}
-.processing-inner {
+/* Processing overlay inside dubbed cell */
+.player-processing {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  color: rgba(255,255,255,0.85);
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  color: rgba(255,255,255,0.8);
   text-align: center;
+  width: 100%;
 }
-.processing-spinner {
-  width: 36px;
-  height: 36px;
-  border: 3px solid rgba(255,255,255,0.12);
-  border-top-color: rgba(255,255,255,0.85);
+.proc-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255,165,0,0.2);
+  border-top-color: var(--amber);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
-.processing-msg { font-size: 14px; font-weight: 500; letter-spacing: -0.01em; }
-.processing-pct { font-size: 12px; color: rgba(255,255,255,0.45); }
-.processing-bar {
-  width: 180px;
+.proc-msg { font-size: 13px; color: rgba(255,255,255,0.7); }
+.proc-pct { font-size: 11px; font-family: var(--font-mono); color: var(--amber); }
+.proc-bar {
+  width: 160px;
   height: 3px;
-  background: rgba(255,255,255,0.12);
+  background: rgba(255,165,0,0.15);
   border-radius: 2px;
   overflow: hidden;
 }
-.processing-fill {
+.proc-fill {
   height: 100%;
-  background: rgba(255,255,255,0.7);
+  background: var(--amber);
   border-radius: 2px;
-  transition: width 0.3s ease;
+  transition: width 0.3s;
 }
 
-/* ── Tab bar ── */
-.tab-bar {
+.dubbed-video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: #000;
+}
+
+.cell-status {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 10px 16px;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
+  gap: 6px;
+  padding: 0 2px;
 }
 
-.tab-btn {
+.status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
+  gap: 4px;
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  padding: 3px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  color: var(--dim);
   background: transparent;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background 0.1s, color 0.1s, border-color 0.1s;
-  letter-spacing: -0.01em;
 }
-.tab-btn:hover:not(:disabled) { background: var(--surface-subtle); color: var(--text); }
-.tab-btn.active {
-  background: var(--surface-subtle);
-  color: var(--text);
-  border-color: var(--border);
+.pill-ok {
+  color: var(--teal);
+  border-color: rgba(0,200,150,0.3);
+  background: rgba(0,200,150,0.06);
 }
-.tab-btn:disabled { opacity: 0.35; cursor: default; }
+.pill-dim {
+  color: var(--dim);
+}
 
-/* ── Timeline/transcript panel ── */
-.timeline-panel {
-  background: var(--surface);
-  border-top: 1px solid var(--border);
+/* ── Section headers ── */
+.section-header {
   display: flex;
-  flex-direction: column;
-  max-height: 220px;
-  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 2px 10px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
 }
-.timeline-header {
-  padding: 10px 16px 6px;
-  flex-shrink: 0;
+.section-header.transcript-toggle {
+  cursor: pointer;
+  user-select: none;
 }
-.timeline-scroll {
-  overflow-y: auto;
-  padding: 0 8px 8px;
+.section-header.transcript-toggle:hover .section-title { color: var(--text); }
+
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: var(--font-mono);
   flex: 1;
 }
+.section-count {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--dim);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* ── Audio tracks ── */
+.audio-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.audio-cell {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.audio-cell-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.audio-el {
+  width: 100%;
+  height: 40px;
+}
+
+.audio-skeleton {
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* ── Transcript ── */
+.transcript-body {
+  padding: 0 0 24px;
+}
+
+.transcript-raw {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.transcript-raw p { margin: 0 0 4px; }
+
+.transcript-empty {
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 20px;
+  text-align: center;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.transcript-empty strong { color: var(--text); }
 
 /* ── Spinners ── */
 .spinner {
@@ -820,29 +878,24 @@ const isTranscribing = computed(() => isProcessing.value && currentJobType.value
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Regenerate dropdown ── */
-.regen-wrap {
-  position: relative;
-}
+/* ── Regen dropdown ── */
+.regen-wrap { position: relative; }
 .regen-btn {
   display: inline-flex;
   align-items: center;
   gap: 3px;
   padding: 0 8px;
 }
-.regen-btn.active {
-  background: var(--surface-subtle);
-  border-color: var(--border);
-}
+.regen-btn.active { background: var(--bg3); border-color: var(--border); }
 .regen-menu {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
   min-width: 200px;
-  background: var(--surface);
+  background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
   z-index: 100;
   overflow: hidden;
 }
@@ -860,20 +913,26 @@ const isTranscribing = computed(() => isProcessing.value && currentJobType.value
   text-align: left;
   transition: background 0.1s;
 }
-.regen-item:hover:not(:disabled) { background: var(--surface-subtle); }
+.regen-item:hover:not(:disabled) { background: var(--bg3); }
 .regen-item:disabled { opacity: 0.4; cursor: default; }
 
-/* ── VideoPlayer override: fill player-area ── */
-.player-wrap :deep(.video-wrap) {
+/* ── VideoPlayer fill ── */
+.cell-player :deep(.video-wrap) {
   width: 100%;
   height: 100%;
   border-radius: 0;
   background: #000;
 }
-.player-wrap :deep(.player) {
+.cell-player :deep(.player) {
   width: 100%;
   height: 100%;
   max-height: 100%;
   object-fit: contain;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .videos-grid { grid-template-columns: 1fr; }
+  .audio-grid { grid-template-columns: 1fr; }
 }
 </style>

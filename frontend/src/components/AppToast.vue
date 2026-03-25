@@ -9,7 +9,7 @@ const { toasts, removeToast } = useToast()
     <div class="toast-container">
       <TransitionGroup name="toast">
         <div
-          v-for="t in toasts"
+          v-for="t in toasts.slice(0, 3)"
           :key="t.id"
           class="toast"
           :class="`toast--${t.type}`"
@@ -17,7 +17,7 @@ const { toasts, removeToast } = useToast()
           @click="removeToast(t.id)"
         >
           <span class="toast-dot" />
-          <span>{{ t.message }}</span>
+          <span class="toast-msg">{{ t.message }}</span>
         </div>
       </TransitionGroup>
     </div>
@@ -33,6 +33,7 @@ const { toasts, removeToast } = useToast()
   flex-direction: column;
   gap: 8px;
   z-index: 9999;
+  max-width: 380px;
 }
 
 .toast {
@@ -42,15 +43,18 @@ const { toasts, removeToast } = useToast()
   padding: 11px 16px;
   border-radius: var(--radius);
   cursor: pointer;
-  font-size: 13.5px;
-  font-weight: 500;
-  letter-spacing: -0.01em;
   min-width: 260px;
-  max-width: 380px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.10);
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--bg3);
   color: var(--text);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.toast-msg {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  flex: 1;
 }
 
 .toast-dot {
@@ -58,11 +62,14 @@ const { toasts, removeToast } = useToast()
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--text-muted);
+  background: var(--muted);
 }
-.toast--success .toast-dot { background: #16a34a; }
-.toast--error   .toast-dot { background: #dc2626; }
-.toast--info    .toast-dot { background: var(--text); }
+.toast--success { border-color: var(--b-teal); }
+.toast--success .toast-dot { background: var(--teal); }
+.toast--error   { border-color: var(--b-red); }
+.toast--error   .toast-dot { background: var(--red); }
+.toast--info    { border-color: var(--b-amber); }
+.toast--info    .toast-dot { background: var(--amber); }
 
 .toast-enter-active, .toast-leave-active { transition: all 0.2s ease; }
 .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(24px); }
