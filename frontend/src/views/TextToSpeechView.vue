@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import * as ttsApi from '@/api/tts'
-import { getProgressWsUrl } from '@/api/jobs'
 import { useToast } from '@/composables/useToast'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 

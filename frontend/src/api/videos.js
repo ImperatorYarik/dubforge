@@ -33,3 +33,11 @@ export function getVocalsStreamUrl(videoId) {
 export function getNoVocalsStreamUrl(videoId) {
   return client.get(`/videos/${videoId}/no-vocals-stream`)
 }
+
+export function getDubbedVersionStreamUrl(videoId, jobId) {
+  return client.get(`/videos/${videoId}/dubbed-versions/${jobId}/stream`)
+}
+
+export function deleteDubbedVersion(videoId, jobId) {
+  return client.delete(`/videos/${videoId}/dubbed-versions/${jobId}`)
+}

@@ -18,7 +18,7 @@ const routes = [
     path: '/tts',
     name: 'tts',
     component: () => import('@/views/TextToSpeechView.vue'),
-    meta: { title: 'Text to Speech', requiresProject: true },
+    meta: { title: 'Text to Speech' },
   },
   {
     path: '/projects',

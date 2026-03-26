@@ -2,11 +2,14 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useSystemStore } from '@/stores/system'
+import { useProjectsStore } from '@/stores/projects'
 
 const route = useRoute()
 const sys = useSystemStore()
+const projectsStore = useProjectsStore()
 
 const title = computed(() => route.meta?.title ?? 'DubForge')
+const projectName = computed(() => projectsStore.currentProject?.metadata?.title ?? null)
 
 const gpuBadge = computed(() => {
   if (!sys.gpuAvailable) return { cls: 'badge-err', label: 'No GPU' }
@@ -15,7 +18,7 @@ const gpuBadge = computed(() => {
 })
 
 const modelBadge = computed(() => {
-  if (!sys.workerOnline) return { cls: 'badge-err', label: 'WORKER OFFLINE' }
+  if (!sys.workerOnline) return { cls: 'badge-warn', label: 'WORKER OFFLINE' }
   if (sys.xttsLoaded) return { cls: 'badge-warn', label: 'XTTS LOADED' }
   if (sys.whisperLoaded) return { cls: 'badge-ok', label: 'WHISPER LOADED' }
   return { cls: 'badge-dim', label: 'IDLE' }
@@ -24,7 +27,10 @@ const modelBadge = computed(() => {
 
 <template>
   <header class="topbar">
-    <span class="topbar-title">{{ title }}</span>
+    <div class="topbar-left">
+      <span class="topbar-title">{{ title }}</span>
+      <span v-if="projectName" class="topbar-project">{{ projectName }}</span>
+    </div>
     <div class="topbar-badges">
       <span :class="['badge', gpuBadge.cls]">
         <span class="badge-dot"></span>
@@ -49,6 +55,11 @@ const modelBadge = computed(() => {
   padding: 0 24px;
   flex-shrink: 0;
 }
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .topbar-title {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -56,6 +67,22 @@ const modelBadge = computed(() => {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
+}
+.topbar-project {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+.topbar-project::before {
+  content: '·';
+  margin-right: 10px;
+  color: var(--dim);
 }
 .topbar-badges {
   display: flex;

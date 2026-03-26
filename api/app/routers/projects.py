@@ -1,22 +1,25 @@
 import os
 
 from fastapi import APIRouter
-from app.models.project import ProjectCreationResponse, ProjectResponse, ProjectListResponse
-from app.utils.storage import storage
-from app.utils.youtube_metadata import get_youtube_metadata, download_youtube_video
-from app.CRUD import projects, videos
+from fastapi.responses import JSONResponse
+
+from app.core.storage import storage
+from app.repositories import projects as projects_repo
+from app.repositories import videos as videos_repo
+from app.schemas.project import ProjectCreationResponse, ProjectListResponse, ProjectResponse
+from app.services.youtube import download_youtube_video, get_youtube_metadata
 
 router = APIRouter()
 
-@router.post("/create")
+
+@router.post("/create", response_model=ProjectCreationResponse)
 async def create_project(youtube_url: str, download_from_youtube: bool = True):
     metadata = await get_youtube_metadata(youtube_url)
-    project_id = await projects.create_project(metadata)
+    project_id = await projects_repo.create_project(metadata)
     storage.create_folder(project_id)
 
-    local_path = f"/tmp/{project_id}/video.mp4"
-
     if download_from_youtube:
+        local_path = f"/tmp/{project_id}/video.mp4"
         os.makedirs(f"/tmp/{project_id}", exist_ok=True)
         success = await download_youtube_video(youtube_url, local_path)
         if not success:
@@ -27,38 +30,44 @@ async def create_project(youtube_url: str, download_from_youtube: bool = True):
             storage.upload_file_raw(f, object_name)
 
         video_url = f"{storage.get_base_url()}/{object_name}"
-        await videos.add_video(project_id, video_url)
+        await videos_repo.add_video(project_id, video_url)
 
-        return ProjectCreationResponse(project_id=project_id, message="Project created successfully", metadata=metadata)
+    return ProjectCreationResponse(
+        project_id=project_id,
+        message="Project created successfully",
+        metadata=metadata,
+    )
 
 
-    return ProjectCreationResponse(project_id=project_id, message="Project created successfully", metadata=metadata)
-
-@router.post("/create-blank")
+@router.post("/create-blank", response_model=ProjectCreationResponse)
 async def create_blank_project(title: str = "Untitled project"):
     metadata = {"title": title}
-    project_id = await projects.create_project(metadata)
+    project_id = await projects_repo.create_project(metadata)
     storage.create_folder(project_id)
-    return ProjectCreationResponse(project_id=project_id, message="Project created successfully", metadata=metadata)
+    return ProjectCreationResponse(
+        project_id=project_id,
+        message="Project created successfully",
+        metadata=metadata,
+    )
 
-@router.get("/list_projects")
+
+@router.get("/list_projects", response_model=ProjectListResponse)
 async def list_projects():
-    projects_list = await projects.list_projects()
-    return ProjectListResponse(projects=projects_list)
+    return ProjectListResponse(projects=await projects_repo.list_projects())
 
-@router.get("/{project_id}")
+
+@router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(project_id: str):
-    project = await projects.get_project(project_id)
-    if project:
-        return ProjectResponse(project_id=project["project_id"], metadata=project["metadata"], created_at=project["created_at"], updated_at=project["updated_at"])
-    else:
-        return {"message": "Project not found"}
-    
+    project = await projects_repo.get_project(project_id)
+    if not project:
+        return JSONResponse(content={"message": "Project not found"})
+    return ProjectResponse(**project)
+
+
 @router.delete("/{project_id}")
 async def delete_project(project_id: str):
-    success = await projects.delete_project(project_id)
-    if success:
-        storage.delete_folder(project_id)
-        return {"message": "Project deleted successfully"}
-    else:
-        return {"message": "Project not found"} 
+    success = await projects_repo.delete_project(project_id)
+    if not success:
+        return {"message": "Project not found"}
+    storage.delete_folder(project_id)
+    return {"message": "Project deleted successfully"}

@@ -1,15 +1,13 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectsStore } from '@/stores/projects'
-import { useVideosStore } from '@/stores/videos'
 import { useToast } from '@/composables/useToast'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import * as videosApi from '@/api/videos'
 
 const router = useRouter()
 const store = useProjectsStore()
-const videosStore = useVideosStore()
 const toast = useToast()
 
 const showCreate = ref(false)
@@ -18,6 +16,15 @@ const youtubeUrl = ref('')
 const newProjectName = ref('')
 const createMode = ref('file')  // 'file' | 'youtube' | 'blank'
 const isDragOver = ref(false)
+const searchQuery = ref('')
+
+const filteredProjects = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  if (!q) return store.projects
+  return store.projects.filter(p =>
+    (p.metadata?.title || 'Untitled').toLowerCase().includes(q)
+  )
+})
 
 onMounted(() => store.fetchProjects())
 
@@ -84,7 +91,7 @@ async function onBlankSubmit() {
 
 function selectProject(id) {
   store.setCurrentProject(id)
-  router.push({ name: 'dub' })
+  router.push({ name: 'project-detail', params: { id } })
 }
 
 function formatDate(d) {
@@ -150,6 +157,15 @@ function formatDate(d) {
       </div>
     </div>
 
+    <!-- Search -->
+    <div v-if="!store.loading && store.projects.length > 0" class="search-row">
+      <input
+        class="input search-input"
+        v-model="searchQuery"
+        placeholder="Search projects…"
+      />
+    </div>
+
     <!-- Project list -->
     <div class="projects-list">
       <template v-if="store.loading">
@@ -160,13 +176,20 @@ function formatDate(d) {
       </template>
 
       <div v-else-if="!store.projects.length" class="empty">
-        <p>No projects yet</p>
-        <p class="empty-sub">Create a project to get started</p>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <p class="empty-title">No projects yet</p>
+        <p class="empty-sub">Create your first project to start dubbing or transcribing</p>
+        <button class="btn btn-primary btn-sm" @click="showCreate = true">+ Create Project</button>
+      </div>
+
+      <div v-else-if="searchQuery && !filteredProjects.length" class="empty">
+        <p class="empty-title">No results for "{{ searchQuery }}"</p>
+        <p class="empty-sub">Try a different search term</p>
       </div>
 
       <div
         v-else
-        v-for="p in store.projects"
+        v-for="p in filteredProjects"
         :key="p.project_id"
         class="project-card"
         :class="{ current: p.project_id === store.currentProjectId }"
@@ -249,6 +272,11 @@ function formatDate(d) {
 .project-card:hover .action-btn { opacity: 1; }
 .action-btn:hover { background: var(--red-g); color: var(--red); }
 
-.empty { padding: 56px 0; text-align: center; color: var(--muted); }
-.empty-sub { font-size: 12px; color: var(--dim); margin-top: 4px; }
+.search-row { margin-bottom: 16px; }
+.search-input { max-width: 320px; }
+
+.empty { padding: 56px 0; text-align: center; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.empty-title { font-size: 14px; font-weight: 500; color: var(--text); }
+.empty-sub { font-size: 12px; color: var(--muted); margin-top: -4px; }
+.empty .btn { margin-top: 6px; }
 </style>

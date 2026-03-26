@@ -1,5 +1,4 @@
 <script setup>
-import { computed } from 'vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 
 const props = defineProps({

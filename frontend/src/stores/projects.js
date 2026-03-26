@@ -39,6 +39,7 @@ export const useProjectsStore = defineStore('projects', () => {
       // Update in list if present
       const idx = projects.value.findIndex(p => p.project_id === projectId)
       if (idx >= 0) projects.value[idx] = data
+      else projects.value.push(data)
       return data
     } catch (e) {
       error.value = e.response?.data?.detail ?? e.message

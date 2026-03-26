@@ -1,24 +1,42 @@
+# Python
 .venv
-.env
+*.venv
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.db
-*.sqlite3
-*.log
-*.egg-info/
-dist/
-build/
 *.egg
+*.egg-info/
 *.tar.gz
 *.whl
+build/
+
+# Node
+node_modules/
+dist/
+.vite/
+coverage/
+
+# Environment & secrets
+.env
 *.env
-*.venv
+
+# Databases & local state
+*.db
+*.sqlite3
+
+# Logs
+*.log
+
+# IDE
 .idea/
 .vscode/
+
+# Test artefacts
 .pytest_cache/
-coverage/
 htmlcov/
-tmp
+.nyc_output/
 .playwright*
+
+# Misc
+tmp

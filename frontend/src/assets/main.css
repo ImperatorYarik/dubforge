@@ -12,7 +12,7 @@
   --red:     #e05050;
   --red-g:   rgba(224,80,80,0.10);
   --text:    #dedad2;
-  --muted:   #74726c;
+  --muted:   #8f8d87;
   --dim:     #3a3935;
   --border:  rgba(255,255,255,0.06);
   --b-amber: rgba(232,160,32,0.18);
@@ -27,6 +27,13 @@
   --topbar-height: 50px;
   --radius: 6px;
   --radius-lg: 10px;
+
+  /* Compatibility aliases for components using older variable names */
+  --color-text: var(--text);
+  --color-accent: var(--amber);
+  --text-placeholder: var(--muted);
+  --surface-hover: rgba(255,255,255,0.04);
+  --accent: var(--amber);
 }
 
 /* -------- Reset -------- */

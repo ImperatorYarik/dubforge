@@ -27,10 +27,17 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def mock_register_job():
+    """Prevent register_job from connecting to Redis in all router tests."""
+    with patch("app.routers.jobs.register_job", new=AsyncMock()):
+        yield
+
+
 class TestDubVideo:
     def test_returns_task_id(self, client):
         with (
-            patch("app.routers.jobs.videos") as mock_videos,
+            patch("app.routers.jobs.videos_repo") as mock_videos,
             patch("app.routers.jobs.celery") as mock_celery,
         ):
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
@@ -46,7 +53,7 @@ class TestDubVideo:
 
     def test_skip_transcription_param_passed(self, client):
         with (
-            patch("app.routers.jobs.videos") as mock_videos,
+            patch("app.routers.jobs.videos_repo") as mock_videos,
             patch("app.routers.jobs.celery") as mock_celery,
         ):
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
@@ -61,7 +68,7 @@ class TestDubVideo:
 
     def test_ducking_params_passed(self, client):
         with (
-            patch("app.routers.jobs.videos") as mock_videos,
+            patch("app.routers.jobs.videos_repo") as mock_videos,
             patch("app.routers.jobs.celery") as mock_celery,
         ):
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
@@ -80,7 +87,7 @@ class TestDubVideo:
 
     def test_atempo_params_clamped(self, client):
         with (
-            patch("app.routers.jobs.videos") as mock_videos,
+            patch("app.routers.jobs.videos_repo") as mock_videos,
             patch("app.routers.jobs.celery") as mock_celery,
         ):
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
@@ -100,7 +107,7 @@ class TestDubVideo:
 
     def test_atempo_params_in_range(self, client):
         with (
-            patch("app.routers.jobs.videos") as mock_videos,
+            patch("app.routers.jobs.videos_repo") as mock_videos,
             patch("app.routers.jobs.celery") as mock_celery,
         ):
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
@@ -118,7 +125,7 @@ class TestDubVideo:
         assert call_kwargs["atempo_max"] == 1.4
 
     def test_video_not_found(self, client):
-        with patch("app.routers.jobs.videos") as mock_videos:
+        with patch("app.routers.jobs.videos_repo") as mock_videos:
             mock_videos.get_video = AsyncMock(return_value=None)
             resp = client.post("/jobs/dub?project_id=proj-1&video_id=nonexistent")
 
@@ -128,7 +135,7 @@ class TestDubVideo:
 class TestTranscribeVideo:
     def test_returns_task_id(self, client):
         with (
-            patch("app.routers.jobs.videos") as mock_videos,
+            patch("app.routers.jobs.videos_repo") as mock_videos,
             patch("app.routers.jobs.celery") as mock_celery,
         ):
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
@@ -143,7 +150,7 @@ class TestTranscribeVideo:
 
     def test_model_param_passed(self, client):
         with (
-            patch("app.routers.jobs.videos") as mock_videos,
+            patch("app.routers.jobs.videos_repo") as mock_videos,
             patch("app.routers.jobs.celery") as mock_celery,
         ):
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
@@ -157,7 +164,7 @@ class TestTranscribeVideo:
         assert call_kwargs["model"] == "medium"
 
     def test_invalid_model_rejected(self, client):
-        with patch("app.routers.jobs.videos") as mock_videos:
+        with patch("app.routers.jobs.videos_repo") as mock_videos:
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
             resp = client.post("/jobs/transcribe?project_id=proj-1&video_id=vid-1&model=invalid-model")
 
@@ -168,7 +175,7 @@ class TestTranscribeVideo:
         valid_models = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
         for m in valid_models:
             with (
-                patch("app.routers.jobs.videos") as mock_videos,
+                patch("app.routers.jobs.videos_repo") as mock_videos,
                 patch("app.routers.jobs.celery") as mock_celery,
             ):
                 mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
@@ -182,7 +189,7 @@ class TestTranscribeVideo:
 
     def test_skip_demucs_param_passed(self, client):
         with (
-            patch("app.routers.jobs.videos") as mock_videos,
+            patch("app.routers.jobs.videos_repo") as mock_videos,
             patch("app.routers.jobs.celery") as mock_celery,
         ):
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
@@ -197,7 +204,7 @@ class TestTranscribeVideo:
 
     def test_language_param_passed(self, client):
         with (
-            patch("app.routers.jobs.videos") as mock_videos,
+            patch("app.routers.jobs.videos_repo") as mock_videos,
             patch("app.routers.jobs.celery") as mock_celery,
         ):
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
@@ -212,7 +219,7 @@ class TestTranscribeVideo:
 
     def test_translate_param_passed(self, client):
         with (
-            patch("app.routers.jobs.videos") as mock_videos,
+            patch("app.routers.jobs.videos_repo") as mock_videos,
             patch("app.routers.jobs.celery") as mock_celery,
         ):
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
@@ -238,8 +245,8 @@ class TestGetJobStatus:
 
         with (
             patch("app.routers.jobs.AsyncResult", return_value=mock_result),
-            patch("app.routers.jobs.videos") as mock_videos,
-            patch("app.routers.jobs.storage") as mock_storage,
+            patch("app.services.jobs.videos_repo") as mock_videos,
+            patch("app.services.jobs.storage") as mock_storage,
         ):
             mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
             mock_storage.generate_presigned_url.return_value = (

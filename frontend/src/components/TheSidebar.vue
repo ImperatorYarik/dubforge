@@ -1,11 +1,10 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import { useProjectsStore } from '@/stores/projects'
 import { useJobsStore } from '@/stores/jobs'
 
 const route = useRoute()
-const router = useRouter()
 const projectsStore = useProjectsStore()
 const jobsStore = useJobsStore()
 
@@ -22,7 +21,7 @@ const recentJobs = computed(() => jobsStore.recentJobs.slice(0, 8))
 const activeJobs = computed(() => jobsStore.recentJobs.filter(j => j.state === 'STARTED' || j.state === 'PENDING'))
 
 function jobTypeLabel(type) {
-  return { dub: 'Dub', transcribe: 'Transcribe', separate: 'Separate' }[type] ?? type
+  return { dub: 'Dubbing', transcribe: 'Transcription', separate: 'Separation' }[type] ?? type
 }
 
 function jobStateColor(state) {
@@ -86,7 +85,7 @@ const manageNav = [
     </div>
 
     <div class="nav-section">
-      <span class="section-label">PIPELINES</span>
+      <span class="section-label">TOOLS</span>
       <nav class="nav">
         <RouterLink
           v-for="item in pipelineNav"
@@ -147,6 +146,7 @@ const manageNav = [
     </div>
 
     <div class="sidebar-bottom">
+      <span class="section-label project-chip-label">ACTIVE PROJECT</span>
       <button class="project-chip" @click="showProjectPicker = !showProjectPicker">
         <span class="chip-dot" :class="currentProject ? 'dot-active' : 'dot-none'"></span>
         <span class="chip-name">{{ currentProject?.metadata?.title || 'No project' }}</span>
@@ -290,6 +290,12 @@ const manageNav = [
   padding: 12px;
   border-top: 1px solid var(--border);
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.project-chip-label {
+  padding: 0 4px;
 }
 
 .project-chip {

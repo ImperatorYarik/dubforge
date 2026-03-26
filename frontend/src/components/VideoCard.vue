@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 
-const props = defineProps({
+defineProps({
   video: {
     type: Object,
     required: true,

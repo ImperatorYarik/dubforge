@@ -246,7 +246,16 @@ class DubbingPipeline(BasePipeline):
 
         videos_collection.update_one(
             {"video_id": ctx.video_id},
-            {"$set": update_fields},
+            {
+                "$set": update_fields,
+                "$push": {
+                    "dubbed_versions": {
+                        "job_id": ctx.job_id,
+                        "url": dubbed_url,
+                        "created_at": datetime.now(),
+                    }
+                },
+            },
         )
 
         return DubJobResult(

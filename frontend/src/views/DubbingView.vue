@@ -1,14 +1,12 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
 import { useProjectsStore } from '@/stores/projects'
 import { useJobsStore } from '@/stores/jobs'
 import { useSystemStore } from '@/stores/system'
 import { useToast } from '@/composables/useToast'
 import * as videosApi from '@/api/videos'
+import { deleteDubbedVersion, getDubbedVersionStreamUrl } from '@/api/videos'
 
-const router = useRouter()
-const route = useRoute()
 const projectsStore = useProjectsStore()
 const jobsStore = useJobsStore()
 const systemStore = useSystemStore()
@@ -45,24 +43,93 @@ const atempoMin = ref(0.75)
 // Video data (for re-dub check)
 const videoData = ref(null)
 
-// Project video picker
-const projectVideos = ref([])
-const showPicker = ref(false)
+// Project files (with presigned URLs)
+const projectVideoResults = ref([])
+const filesLoading = ref(false)
 
-async function loadProjectVideos() {
+// Per-card version selection and deletion state (keyed by video_id)
+const selectedVersionByVideo = ref({})   // { [video_id]: job_id | null }
+const deletingVersionByVideo = ref({})   // { [video_id]: job_id | null }
+
+function sortedVersionsFor(v) {
+  return [...(v.dubbed_versions || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+}
+
+async function selectVersionForCard(v, jobId) {
+  selectedVersionByVideo.value[v.video_id] = jobId || null
+  // Update the card's dubbed_url to the presigned URL for the selected version
+  const idx = projectVideoResults.value.findIndex(x => x.video_id === v.video_id)
+  if (idx === -1) return
   try {
-    const { data } = await videosApi.listVideos()
-    const pid = projectsStore.currentProjectId
-    projectVideos.value = (data || []).filter(v => v.project_id === pid)
+    if (jobId) {
+      const { data } = await getDubbedVersionStreamUrl(v.video_id, jobId)
+      projectVideoResults.value[idx] = { ...projectVideoResults.value[idx], dubbed_url: data.url }
+    } else {
+      // Reload latest
+      const { data } = await videosApi.getDubbedStreamUrl(v.video_id)
+      projectVideoResults.value[idx] = { ...projectVideoResults.value[idx], dubbed_url: data.url }
+    }
   } catch {}
 }
 
-function pickVideo(video) {
+async function deleteVersionForCard(v, jobId) {
+  deletingVersionByVideo.value[v.video_id] = jobId
+  try {
+    await deleteDubbedVersion(v.video_id, jobId)
+    // Re-fetch this video's data
+    const { data: updated } = await videosApi.getVideo(v.video_id)
+    const presigned = {}
+    await Promise.allSettled([
+      videosApi.getStreamUrl(v.video_id).then(({ data }) => { presigned.original_url = data.url }).catch(() => {}),
+      updated.dubbed_url ? videosApi.getDubbedStreamUrl(v.video_id).then(({ data }) => { presigned.dubbed_url = data.url }).catch(() => {}) : null,
+      updated.vocals_url ? videosApi.getVocalsStreamUrl(v.video_id).then(({ data }) => { presigned.vocals_url = data.url }).catch(() => {}) : null,
+      updated.no_vocals_url ? videosApi.getNoVocalsStreamUrl(v.video_id).then(({ data }) => { presigned.no_vocals_url = data.url }).catch(() => {}) : null,
+    ].filter(Boolean))
+    const idx = projectVideoResults.value.findIndex(x => x.video_id === v.video_id)
+    if (idx !== -1) {
+      projectVideoResults.value[idx] = { ...updated, ...presigned }
+    }
+    if (selectedVersionByVideo.value[v.video_id] === jobId) {
+      delete selectedVersionByVideo.value[v.video_id]
+    }
+    toast.success('Version deleted')
+  } catch (e) {
+    toast.error('Delete failed: ' + e.message)
+  } finally {
+    deletingVersionByVideo.value[v.video_id] = null
+  }
+}
+
+async function loadAllProjectFiles() {
+  const pid = projectsStore.currentProjectId
+  if (!pid) return
+  filesLoading.value = true
+  try {
+    const { data } = await videosApi.listVideos()
+    const videos = (data || []).filter(v => v.project_id === pid)
+    const enriched = await Promise.all(videos.map(async v => {
+      const urls = {}
+      await Promise.allSettled([
+        videosApi.getStreamUrl(v.video_id).then(({ data }) => { urls.original_url = data.url }).catch(() => {}),
+        v.dubbed_url ? videosApi.getDubbedStreamUrl(v.video_id).then(({ data }) => { urls.dubbed_url = data.url }).catch(() => {}) : null,
+        v.vocals_url ? videosApi.getVocalsStreamUrl(v.video_id).then(({ data }) => { urls.vocals_url = data.url }).catch(() => {}) : null,
+        v.no_vocals_url ? videosApi.getNoVocalsStreamUrl(v.video_id).then(({ data }) => { urls.no_vocals_url = data.url }).catch(() => {}) : null,
+      ].filter(Boolean))
+      return { ...v, ...urls }
+    }))
+    projectVideoResults.value = enriched
+  } catch {} finally {
+    filesLoading.value = false
+  }
+}
+
+function useForDubbing(video) {
   videoId.value = video.video_id
   fileName.value = `video (${new Date(video.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })})`
   fileSize.value = 0
-  showPicker.value = false
   videoData.value = video
+  loadResultFromVideo(video)
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 const canRedub = computed(() => videoData.value?.transcription || videoData.value?.transcript_segments?.length)
@@ -102,13 +169,45 @@ onMounted(() => {
     fetchVideoData(state.videoId)
   }
   projectsStore.fetchProjects()
-  loadProjectVideos()
+  loadAllProjectFiles()
 })
+
+async function loadResultFromVideo(video) {
+  if (!video) return
+  if (!video.dubbed_url && !video.transcription && !video.vocals_url) return
+
+  const r = {
+    video_id: video.video_id,
+    transcript_segments: video.transcript_segments || [],
+    transcription: video.transcription,
+    detected_language: video.detected_language,
+    duration_seconds: video.duration_seconds,
+    segment_count: video.transcript_segments?.length,
+  }
+
+  await Promise.allSettled([
+    video.video_url
+      ? videosApi.getStreamUrl(video.video_id).then(({ data }) => { r.original_url = data.url }).catch(() => {})
+      : Promise.resolve(),
+    video.dubbed_url
+      ? videosApi.getDubbedStreamUrl(video.video_id).then(({ data }) => { r.dubbed_url = data.url }).catch(() => {})
+      : Promise.resolve(),
+    video.vocals_url
+      ? videosApi.getVocalsStreamUrl(video.video_id).then(({ data }) => { r.vocals_url = data.url }).catch(() => {})
+      : Promise.resolve(),
+    video.no_vocals_url
+      ? videosApi.getNoVocalsStreamUrl(video.video_id).then(({ data }) => { r.no_vocals_url = data.url }).catch(() => {})
+      : Promise.resolve(),
+  ])
+
+  result.value = r
+}
 
 async function fetchVideoData(id) {
   try {
     const { data } = await videosApi.getVideo(id)
     videoData.value = data
+    await loadResultFromVideo(data)
   } catch {}
 }
 
@@ -202,10 +301,17 @@ async function startJob() {
         const status = await jobsStore.fetchStatus(taskId.value)
         if (status.state === 'SUCCESS') {
           result.value = status.result
+          // Enrich with original video presigned URL
+          if (videoId.value) {
+            videosApi.getStreamUrl(videoId.value)
+              .then(({ data }) => { if (result.value) result.value = { ...result.value, original_url: data.url } })
+              .catch(() => {})
+          }
         } else if (status.error) {
           toast.error(status.error)
         }
       } catch {}
+      loadAllProjectFiles()
     }
   }
 }
@@ -265,10 +371,11 @@ function download(name, content, type) {
 }
 
 async function refreshLinks() {
-  if (!taskId.value) return
+  if (!videoId.value) return
   try {
-    const status = await jobsStore.fetchStatus(taskId.value)
-    if (status.result) result.value = status.result
+    const { data: video } = await videosApi.getVideo(videoId.value)
+    videoData.value = video
+    await loadResultFromVideo(video)
     toast.success('Links refreshed')
   } catch { toast.error('Failed to refresh links') }
 }
@@ -316,8 +423,8 @@ function formatBytes(b) {
       </div>
     </div>
 
-    <!-- Pipeline Steps -->
-    <div class="steps-row">
+    <!-- Pipeline Steps — only visible while a job is active -->
+    <div v-if="running || (taskId && !result)" class="steps-row">
       <div
         v-for="(step, i) in STEPS"
         :key="i"
@@ -359,26 +466,9 @@ function formatBytes(b) {
             </div>
           </div>
 
-          <!-- Pick from project -->
-          <div v-if="projectVideos.length" class="picker-row">
-            <button class="btn-pick" @click.stop="showPicker = !showPicker">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-              Pick from project ({{ projectVideos.length }})
-            </button>
-            <div v-if="showPicker" class="picker-list">
-              <div
-                v-for="v in projectVideos"
-                :key="v.video_id"
-                class="picker-item"
-                @click="pickVideo(v)"
-              >
-                <span class="picker-name">{{ new Date(v.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }}</span>
-                <span class="picker-badges">
-                  <span v-if="v.transcription" class="badge-ok">TXT</span>
-                  <span v-if="v.dubbed_url" class="badge-ok">DUB</span>
-                </span>
-              </div>
-            </div>
+          <!-- Pick existing video -->
+          <div v-if="projectVideoResults.length" class="picker-row">
+            <span class="pick-hint">↓ Pick an existing video from Project Files below</span>
           </div>
         </div>
 
@@ -423,7 +513,7 @@ function formatBytes(b) {
           </div>
 
           <div class="opt-row">
-            <label class="opt-label">Audio Ducking</label>
+            <label class="opt-label" title="Lowers background music volume during speech segments so the dubbed voice is easier to hear">Audio Ducking</label>
             <label class="toggle">
               <input type="checkbox" v-model="duckingEnabled" />
               <span class="toggle-track"></span>
@@ -431,7 +521,7 @@ function formatBytes(b) {
           </div>
 
           <div class="opt-row">
-            <label class="opt-label">Atempo Clamp</label>
+            <label class="opt-label" title="Controls how much the TTS audio can be sped up or slowed down to match the original timing. A narrower range sounds more natural but may drift from timing.">Atempo Clamp</label>
             <div class="slider-wrap">
               <input type="range" min="0.5" max="1.0" step="0.05" v-model.number="atempoMin" class="slider" />
               <span class="slider-val">{{ atempoMin }}× – {{ (2 - atempoMin).toFixed(2) }}×</span>
@@ -476,13 +566,38 @@ function formatBytes(b) {
 
         <!-- Result Block -->
         <div v-if="result" class="result-block">
-          <video
-            ref="videoRef"
-            class="result-video"
-            :src="result.dubbed_url"
-            controls
-            @timeupdate="onTimeUpdate"
-          ></video>
+          <!-- Videos row -->
+          <div class="result-videos" :class="{ 'two-col': result.dubbed_url && result.original_url }">
+            <div v-if="result.dubbed_url" class="result-video-wrap">
+              <span class="result-video-label">DUBBED</span>
+              <video
+                ref="videoRef"
+                class="result-video"
+                :src="result.dubbed_url"
+                controls
+                @timeupdate="onTimeUpdate"
+              ></video>
+            </div>
+            <div v-if="result.original_url" class="result-video-wrap">
+              <span class="result-video-label">ORIGINAL</span>
+              <video class="result-video" :src="result.original_url" controls></video>
+            </div>
+          </div>
+
+          <!-- Audio tracks -->
+          <div v-if="result.vocals_url || result.no_vocals_url" class="audio-tracks">
+            <span class="section-label">SEPARATED TRACKS</span>
+            <div class="tracks-grid">
+              <div v-if="result.vocals_url" class="track-cell">
+                <span class="track-label">Vocals</span>
+                <audio :src="result.vocals_url" controls class="track-audio" />
+              </div>
+              <div v-if="result.no_vocals_url" class="track-cell">
+                <span class="track-label">Background</span>
+                <audio :src="result.no_vocals_url" controls class="track-audio" />
+              </div>
+            </div>
+          </div>
 
           <!-- Transcript -->
           <div v-if="result.transcript_segments?.length" class="transcript-panel">
@@ -509,6 +624,12 @@ function formatBytes(b) {
             <a v-if="result.dubbed_url" :href="result.dubbed_url" download class="btn btn-teal btn-sm">
               ↓ Download MP4
             </a>
+            <a v-if="result.vocals_url" :href="result.vocals_url" download class="btn btn-ghost btn-sm">
+              ↓ Vocals WAV
+            </a>
+            <a v-if="result.no_vocals_url" :href="result.no_vocals_url" download class="btn btn-ghost btn-sm">
+              ↓ Background WAV
+            </a>
             <button class="btn btn-ghost btn-sm" @click="refreshLinks">↻ Refresh links</button>
             <button class="btn btn-ghost btn-sm" @click="resetView">+ New Job</button>
           </div>
@@ -516,8 +637,129 @@ function formatBytes(b) {
 
         <!-- Idle placeholder -->
         <div v-if="!running && !result && !taskId" class="idle-placeholder">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          <p>Upload a video and click Start Dubbing</p>
+          <div class="idle-steps">
+            <div class="idle-step">
+              <span class="idle-step-num">1</span>
+              <div class="idle-step-text">
+                <strong>Upload a video</strong>
+                <span>Drag & drop or click to browse</span>
+              </div>
+            </div>
+            <div class="idle-step-arrow">→</div>
+            <div class="idle-step">
+              <span class="idle-step-num">2</span>
+              <div class="idle-step-text">
+                <strong>Configure options</strong>
+                <span>Choose mode & audio settings</span>
+              </div>
+            </div>
+            <div class="idle-step-arrow">→</div>
+            <div class="idle-step">
+              <span class="idle-step-num">3</span>
+              <div class="idle-step-text">
+                <strong>Start Dubbing</strong>
+                <span>AI transcribes & dubs to English</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Project Files -->
+    <div v-if="projectsStore.currentProjectId" class="project-files">
+      <div class="pf-header">
+        <span class="section-label">PROJECT FILES</span>
+        <button class="btn btn-ghost btn-sm" @click="loadAllProjectFiles">↻ Refresh</button>
+      </div>
+
+      <div v-if="filesLoading" class="pf-loading">Loading files…</div>
+      <div v-else-if="!projectVideoResults.length" class="pf-empty">
+        No videos yet — upload a video above to get started
+      </div>
+
+      <div v-for="v in projectVideoResults" :key="v.video_id" class="pf-card">
+        <!-- Card header -->
+        <div class="pf-card-header">
+          <div class="pf-meta">
+            <span class="pf-date">{{ new Date(v.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }}</span>
+            <span v-if="v.detected_language" class="pf-badge pf-badge-dim">{{ v.detected_language.toUpperCase() }}</span>
+            <span v-if="v.duration_seconds" class="pf-badge pf-badge-dim">{{ formatDuration(v.duration_seconds) }}</span>
+            <span v-if="v.dubbed_url" class="pf-badge pf-badge-ok">DUBBED</span>
+            <span v-if="v.transcript_segments?.length" class="pf-badge pf-badge-ok">TRANSCRIPT</span>
+            <span v-if="v.vocals_url" class="pf-badge pf-badge-ok">SEPARATED</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" @click="useForDubbing(v)">Use for dubbing →</button>
+        </div>
+
+        <!-- Video players -->
+        <div class="pf-videos" :class="{ 'pf-two-col': v.dubbed_url && v.original_url }">
+          <div v-if="v.original_url" class="pf-video-wrap">
+            <span class="pf-video-label">ORIGINAL</span>
+            <video :src="v.original_url" controls class="pf-video" preload="metadata" />
+          </div>
+          <div v-if="v.dubbed_url" class="pf-video-wrap">
+            <div class="pf-dubbed-header">
+              <span class="pf-video-label">DUBBED</span>
+              <select
+                v-if="sortedVersionsFor(v).length > 1"
+                class="pf-version-select"
+                :value="selectedVersionByVideo[v.video_id] ?? ''"
+                @change="selectVersionForCard(v, $event.target.value || null)"
+              >
+                <option value="">Latest</option>
+                <option
+                  v-for="(ver, i) in sortedVersionsFor(v)"
+                  :key="ver.job_id"
+                  :value="ver.job_id"
+                >v{{ sortedVersionsFor(v).length - i }} · {{ new Date(ver.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) }}</option>
+              </select>
+            </div>
+            <video :src="v.dubbed_url" controls class="pf-video" preload="metadata" />
+            <!-- Delete old versions -->
+            <div v-if="sortedVersionsFor(v).length > 1" class="pf-version-del-row">
+              <span class="pf-del-label">Remove old:</span>
+              <button
+                v-for="(ver, i) in sortedVersionsFor(v).slice(1)"
+                :key="ver.job_id"
+                class="btn btn-ghost btn-xs pf-del-btn"
+                :disabled="deletingVersionByVideo[v.video_id] === ver.job_id"
+                @click="deleteVersionForCard(v, ver.job_id)"
+              >
+                <span v-if="deletingVersionByVideo[v.video_id] === ver.job_id" class="spinner spinner-dark" />
+                v{{ sortedVersionsFor(v).length - 1 - i }} ✕
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Audio tracks -->
+        <div v-if="v.vocals_url || v.no_vocals_url" class="pf-audio">
+          <span class="section-label">SEPARATED TRACKS</span>
+          <div class="pf-tracks">
+            <div v-if="v.vocals_url" class="pf-track">
+              <div class="pf-track-head">
+                <span class="track-label">Vocals</span>
+                <a :href="v.vocals_url" download class="btn btn-ghost btn-xs">↓ WAV</a>
+              </div>
+              <audio :src="v.vocals_url" controls class="track-audio" />
+            </div>
+            <div v-if="v.no_vocals_url" class="pf-track">
+              <div class="pf-track-head">
+                <span class="track-label">Background</span>
+                <a :href="v.no_vocals_url" download class="btn btn-ghost btn-xs">↓ WAV</a>
+              </div>
+              <audio :src="v.no_vocals_url" controls class="track-audio" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Downloads -->
+        <div class="pf-actions">
+          <a v-if="v.dubbed_url" :href="v.dubbed_url" download class="btn btn-teal btn-sm">↓ Dubbed MP4</a>
+          <a v-if="v.original_url" :href="v.original_url" download class="btn btn-ghost btn-sm">↓ Original</a>
+          <a v-if="v.vocals_url" :href="v.vocals_url" download class="btn btn-ghost btn-sm">↓ Vocals WAV</a>
+          <a v-if="v.no_vocals_url" :href="v.no_vocals_url" download class="btn btn-ghost btn-sm">↓ Background WAV</a>
         </div>
       </div>
     </div>
@@ -635,30 +877,7 @@ function formatBytes(b) {
 
 /* File chip */
 /* Picker */
-.picker-row { margin-top: 6px; position: relative; }
-.btn-pick {
-  display: flex; align-items: center; gap: 6px;
-  background: none; border: 1px solid var(--border);
-  color: var(--muted); font-size: 11px; font-family: var(--font-mono);
-  padding: 5px 10px; border-radius: 4px; cursor: pointer; width: 100%;
-  transition: border-color 0.15s, color 0.15s;
-}
-.btn-pick:hover { border-color: var(--amber); color: var(--amber); }
-.picker-list {
-  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
-  background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
-  max-height: 200px; overflow-y: auto;
-}
-.picker-item {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; cursor: pointer; font-size: 11px; font-family: var(--font-mono);
-  color: var(--muted); border-bottom: 1px solid var(--border);
-  transition: background 0.1s, color 0.1s;
-}
-.picker-item:last-child { border-bottom: none; }
-.picker-item:hover { background: var(--bg4); color: var(--text); }
-.picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.picker-badges { display: flex; gap: 4px; flex-shrink: 0; margin-left: 8px; }
+.picker-row { margin-top: 6px; }
 .badge-ok { background: var(--teal-g); color: var(--teal); border: 1px solid var(--teal); border-radius: 3px; padding: 1px 4px; font-size: 9px; }
 
 .file-chip {
@@ -800,7 +1019,32 @@ function formatBytes(b) {
 
 /* Result */
 .result-block { display: flex; flex-direction: column; gap: 16px; }
+
+.result-videos { display: flex; flex-direction: column; gap: 12px; }
+.result-videos.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.result-video-wrap { display: flex; flex-direction: column; gap: 6px; }
+.result-video-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
 .result-video { width: 100%; border-radius: var(--radius-lg); background: #000; }
+
+.audio-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+}
+.tracks-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.track-cell { display: flex; flex-direction: column; gap: 6px; }
+.track-label { font-family: var(--font-mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.track-audio { width: 100%; height: 36px; }
 
 .transcript-panel {
   background: var(--bg3);
@@ -832,14 +1076,262 @@ function formatBytes(b) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
   min-height: 300px;
+  padding: 32px 16px;
+}
+.idle-steps {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.idle-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  min-width: 140px;
+  max-width: 160px;
+}
+.idle-step-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--amber-g);
+  border: 1px solid var(--b-amber);
+  color: var(--amber);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.idle-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.idle-step-text strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.idle-step-text span {
+  font-size: 11px;
   color: var(--muted);
-  font-size: 13px;
-  text-align: center;
+  line-height: 1.4;
+}
+.idle-step-arrow {
+  color: var(--dim);
+  font-size: 18px;
+  flex-shrink: 0;
 }
 
 /* Left col */
 .left-col { min-width: 0; }
 .right-col { min-width: 0; }
+
+/* Pick hint */
+.pick-hint {
+  font-size: 11px;
+  color: var(--dim);
+  font-family: var(--font-mono);
+}
+
+/* Project Files */
+.project-files {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pf-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pf-loading {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.pf-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  padding: 20px 0;
+}
+
+.pf-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pf-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pf-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pf-date {
+  font-size: 12px;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+
+.pf-badge {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.pf-badge-ok {
+  background: var(--teal-g);
+  border: 1px solid var(--b-teal);
+  color: var(--teal);
+}
+.pf-badge-dim {
+  background: var(--bg4);
+  border: 1px solid var(--border);
+  color: var(--dim);
+}
+
+.pf-videos {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pf-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.pf-video-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pf-video-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+.pf-video {
+  width: 100%;
+  border-radius: var(--radius);
+  background: #000;
+}
+
+.pf-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pf-tracks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.pf-track {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pf-track-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pf-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.btn-xs {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+
+/* Dubbed video header with version selector */
+.pf-dubbed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pf-version-select {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  background: var(--bg4);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  outline: none;
+}
+.pf-version-del-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.pf-del-label {
+  font-size: 10px;
+  color: var(--dim);
+  font-family: var(--font-mono);
+}
+.pf-del-btn {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  padding: 2px 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pf-del-btn:hover:not(:disabled) { color: #e05555; border-color: rgba(220,80,80,0.4); }
+
+/* spinner in xs buttons */
+.spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(0,0,0,0.15);
+  border-top-color: rgba(0,0,0,0.6);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
