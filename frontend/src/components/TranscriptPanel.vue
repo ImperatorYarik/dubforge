@@ -1,5 +1,4 @@
 <script setup>
-import { computed } from 'vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 
 const props = defineProps({
@@ -58,7 +57,7 @@ function updateText(i, value) {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .panel {
   display: flex;
   flex-direction: column;
@@ -116,6 +115,7 @@ textarea.seg-text {
   font-family: var(--font);
   padding: 0;
 }
+
 textarea.seg-text:focus {
   background: var(--surface-hover);
   border-radius: 4px;

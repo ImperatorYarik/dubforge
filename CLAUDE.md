@@ -112,6 +112,9 @@ api/app/
     videos.py          # motor async MongoDB access
     projects.py
   models/              # Pydantic request/response schemas
+    job.py
+    project.py
+    video.py
   utils/
     storage.py         # MinIO wrapper (boto3)
     queue.py           # Celery app instance (broker only, no tasks)
@@ -120,13 +123,28 @@ api/app/
 
 worker/app/
   celery_app.py        # Celery instance; pre-loads Whisper on worker init
+  config.py            # Worker pydantic-settings config
+  database.py          # MongoDB connection
+  storage.py           # MinIO storage client
+  models/              # Structured data models
+    audio.py           # Audio data model
+    job.py             # Job model
+    progress.py        # Progress tracking model
+    segment.py         # Transcript segment model
+  services/            # Business logic / infrastructure services
+    audio_repository.py     # Audio file operations (MinIO)
+    model_manager.py        # Model lifecycle (Whisper, XTTS load/release)
+    progress_publisher.py   # Redis pub/sub progress publishing
+    transcript_repository.py # Transcript storage
   pipelines/
+    base.py                # Base pipeline class
     dubbing_pipeline.py    # Main @celery.task: full dub orchestration, publishes progress
     transcribe_pipeline.py # Standalone transcription task (no TTS)
     tts_pipeline.py        # Standalone TTS task using built-in speakers
   tasks/
     download.py        # Download video from MinIO to disk
     extract_audio.py   # ffmpeg audio extraction + Demucs vocal separation
+    reference_audio.py # Voice reference WAV preparation for XTTS
     transcribe.py      # faster-whisper Whisper large-v3, translate=True by default
     tts.py             # XTTS v2: zero-shot voice cloning + built-in speaker synthesis
     audio_mix.py       # ffmpeg atempo time-stretch, duck + overlay mix, video mux
@@ -136,12 +154,20 @@ frontend/src/
   views/
     ProjectsView.vue        # Project list
     ProjectDetailView.vue   # Main workspace: dub, transcribe, re-dub, video player, transcript panel
+    VideosView.vue          # Video listing within a project
     TextToSpeechView.vue    # TTS generation UI (speaker selection, audio playback)
     VoicesView.vue          # Browse available XTTS speakers
     SettingsView.vue
   stores/              # Pinia stores (projects, videos, jobs)
-  api/                 # axios API client wrappers per resource
-  components/          # Shared UI components (VideoPlayer, TranscriptPanel, DropZone, etc.)
+  api/                 # axios API client wrappers per resource (client.js, jobs.js, projects.js, tts.js, videos.js)
+  components/          # Shared UI components (AppHeader, AppToast, DropZone, ProjectCard, SkeletonBlock,
+                       #   TheSidebar, TopProgressBar, TranscriptPanel, VideoCard, VideoPlayer)
+  composables/
+    useToast.js        # Toast notification composable
+  utils/
+    url.js             # URL utilities
+  router/
+    index.js           # Vue Router configuration
 ```
 
 ### MongoDB Collections

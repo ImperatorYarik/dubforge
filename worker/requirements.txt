@@ -10,3 +10,4 @@ transformers>=4.45,<4.46
 demucs
 soundfile
 TTS
+watchdog

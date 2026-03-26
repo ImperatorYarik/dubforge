@@ -2,12 +2,12 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from app.models.project import (
+from app.schemas.project import (
     ProjectCreationResponse,
-    ProjectResponse,
     ProjectListResponse,
+    ProjectResponse,
 )
-from app.models.video import VideoUploadResponse
+from app.schemas.video import VideoUploadResponse
 
 
 class TestProjectCreationResponse:
@@ -81,6 +81,7 @@ class TestProjectListResponse:
 class TestVideoUploadResponse:
     def test_valid(self):
         model = VideoUploadResponse(
+            video_id="vid-1",
             project_id="proj-1",
             message="Uploaded",
             upload_url="http://minio:9000/bucket/video.mp4",

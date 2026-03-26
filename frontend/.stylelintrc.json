@@ -1,0 +1,21 @@
+{
+  "extends": [
+    "stylelint-config-standard-scss",
+    "stylelint-config-recommended-vue/scss"
+  ],
+  "rules": {
+    "color-no-invalid-hex": true,
+    "no-duplicate-selectors": true,
+    "scss/no-duplicate-mixins": true,
+    "scss/dollar-variable-pattern": "^[a-z][a-z0-9-]*$",
+    "selector-class-pattern": null,
+    "custom-property-pattern": null,
+    "no-descending-specificity": null,
+    "alpha-value-notation": null,
+    "color-function-notation": null,
+    "import-notation": null,
+    "declaration-block-single-line-max-declarations": null,
+    "selector-pseudo-class-no-unknown": [true, { "ignorePseudoClasses": ["deep", "global", "slotted"] }]
+  },
+  "ignoreFiles": ["dist/**", "node_modules/**"]
+}

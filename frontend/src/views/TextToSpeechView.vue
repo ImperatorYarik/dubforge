@@ -1,17 +1,34 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import * as ttsApi from '@/api/tts'
-import { getProgressWsUrl } from '@/api/jobs'
+import { useToast } from '@/composables/useToast'
+import SkeletonBlock from '@/components/SkeletonBlock.vue'
 
+const toast = useToast()
 const voices = ref([])
 const selectedVoice = ref('')
 const selectedFormat = ref('wav')
 const text = ref('')
+const searchQuery = ref('')
 const isGenerating = ref(false)
-const progress = ref({ pct: 0, message: '' })
+const loadingVoices = ref(true)
+const progressPct = ref(0)
+const progressMsg = ref('')
 const audioUrl = ref(null)
 const audioFormat = ref('wav')
-const error = ref(null)
+const audioEl = ref(null)
+const isPlaying = ref(false)
+const currentTime = ref(0)
+const duration = ref(0)
+
+const MAX_CHARS = 2000
+const charWarn = computed(() => text.value.length > 1800)
+
+const filteredVoices = computed(() => {
+  const q = searchQuery.value.toLowerCase()
+  if (!q) return voices.value
+  return voices.value.filter(v => v.name.toLowerCase().includes(q))
+})
 
 onMounted(async () => {
   try {
@@ -19,253 +36,214 @@ onMounted(async () => {
     voices.value = data
     if (data.length) selectedVoice.value = data[0].name
   } catch {
-    error.value = 'Failed to load voices'
+    toast.error('Failed to load voices')
+  } finally {
+    loadingVoices.value = false
   }
 })
 
-function watchProgress(taskId) {
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket(getProgressWsUrl(taskId))
-    ws.onmessage = (e) => {
-      const d = JSON.parse(e.data)
-      progress.value = d
-      if (d.pct >= 100) {
-        ws.close()
-        resolve()
-      }
-    }
-    ws.onerror = () => {
-      ws.close()
-      reject(new Error('WebSocket connection failed'))
-    }
-  })
+function selectVoice(name) {
+  selectedVoice.value = name
+}
+
+function voiceInitials(name) {
+  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+}
+
+function voiceColor(name) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) & 0xffffffff
+  const hue = Math.abs(hash) % 360
+  return `hsl(${hue}, 50%, 30%)`
 }
 
 async function generate() {
   if (!text.value.trim() || !selectedVoice.value) return
-
   isGenerating.value = true
   audioUrl.value = null
-  error.value = null
-  progress.value = { pct: 0, message: 'Submitting...' }
+  progressPct.value = 0
+  progressMsg.value = 'Submitting…'
 
   try {
     const { data } = await ttsApi.generateTts(text.value, selectedVoice.value, selectedFormat.value)
-    await watchProgress(data.task_id)
-    const { data: status } = await ttsApi.getTtsStatus(data.task_id)
-    if (status.status === 'completed') {
-      audioUrl.value = status.result.audio_url
-      audioFormat.value = status.result.format
-    } else {
-      error.value = status.error || 'Generation failed'
+    // Poll status since TTS pipeline doesn't publish progress via WebSocket
+    const result = await pollStatus(data.task_id)
+    if (result?.audio_url) {
+      audioUrl.value = result.audio_url
+      audioFormat.value = result.format || selectedFormat.value
     }
   } catch (e) {
-    error.value = e.message
+    toast.error(e.message || 'Generation failed')
   } finally {
     isGenerating.value = false
   }
+}
+
+async function pollStatus(taskId) {
+  const maxAttempts = 60
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(r => setTimeout(r, 1500))
+    progressPct.value = Math.min(90, (i / maxAttempts) * 90)
+    progressMsg.value = `Synthesizing… (${i * 1.5}s)`
+    const { data } = await ttsApi.getTtsStatus(taskId)
+    if (data.status === 'completed') {
+      progressPct.value = 100
+      return data.result
+    }
+    if (data.status === 'failed') {
+      throw new Error(data.error || 'TTS generation failed')
+    }
+  }
+  throw new Error('Timed out waiting for TTS result')
+}
+
+function togglePlay() {
+  if (!audioEl.value) return
+  if (isPlaying.value) {
+    audioEl.value.pause()
+  } else {
+    audioEl.value.play()
+  }
+}
+
+function onTimeUpdate() {
+  if (!audioEl.value) return
+  currentTime.value = audioEl.value.currentTime
+  duration.value = audioEl.value.duration || 0
+}
+
+function onLoadedMetadata() {
+  if (!audioEl.value) return
+  duration.value = audioEl.value.duration
+}
+
+function onEnded() { isPlaying.value = false }
+
+function scrub(e) {
+  if (!audioEl.value || !duration.value) return
+  const rect = e.currentTarget.getBoundingClientRect()
+  const ratio = (e.clientX - rect.left) / rect.width
+  audioEl.value.currentTime = ratio * duration.value
+}
+
+function formatTime(s) {
+  if (!s || isNaN(s)) return '0:00'
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60).toString().padStart(2, '0')
+  return `${m}:${sec}`
 }
 </script>
 
 <template>
   <div class="view">
-    <div class="page-header">
-      <h1 class="page-title">Text to Speech</h1>
-      <p class="page-sub">Synthesize speech using XTTS v2 built-in voices</p>
-    </div>
-
     <div class="tts-layout">
-      <!-- Voice + Format selectors -->
-      <div class="controls-row">
-        <div class="field field-voice">
-          <label class="label">Voice</label>
-          <select class="input select" v-model="selectedVoice" :disabled="isGenerating">
-            <option v-for="v in voices" :key="v.name" :value="v.name">
-              {{ v.name }} ({{ v.gender === 'F' ? 'Female' : 'Male' }})
-            </option>
-          </select>
+      <!-- Voice grid -->
+      <div class="voice-col">
+        <div class="voice-header">
+          <span class="section-label">// Select Voice — {{ selectedVoice || 'none' }}</span>
+          <input class="input search-input" v-model="searchQuery" placeholder="Search…" />
         </div>
-        <div class="field field-format">
-          <label class="label">Format</label>
-          <select class="input select" v-model="selectedFormat" :disabled="isGenerating">
-            <option value="wav">WAV</option>
-            <option value="mp3">MP3</option>
-          </select>
+
+        <div v-if="loadingVoices" class="voice-grid">
+          <div v-for="n in 6" :key="n" class="voice-card">
+            <SkeletonBlock width="40px" height="40px" style="border-radius:50%" />
+            <SkeletonBlock width="80px" height="12px" style="margin-top:8px" />
+          </div>
+        </div>
+
+        <div v-else class="voice-grid">
+          <button
+            v-for="v in filteredVoices"
+            :key="v.name"
+            class="voice-card"
+            :class="{ selected: selectedVoice === v.name }"
+            @click="selectVoice(v.name)"
+          >
+            <div class="voice-avatar" :style="{ background: voiceColor(v.name) }">
+              {{ voiceInitials(v.name) }}
+            </div>
+            <span class="voice-name">{{ v.name }}</span>
+            <span class="voice-gender badge badge-dim">{{ v.gender === 'F' ? 'F' : 'M' }}</span>
+          </button>
         </div>
       </div>
 
-      <!-- Text input -->
-      <div class="field">
-        <label class="label">Text</label>
-        <textarea
-          class="input textarea"
-          v-model="text"
-          placeholder="Enter the text you want to synthesize…"
-          :disabled="isGenerating"
-          maxlength="2000"
-        />
-        <p class="char-count">{{ text.length }} / 2000</p>
-      </div>
-
-      <!-- Generate button -->
-      <button
-        class="btn btn-primary generate-btn"
-        :disabled="isGenerating || !text.trim() || !selectedVoice"
-        @click="generate"
-      >
-        <span v-if="isGenerating" class="spinner" />
-        {{ isGenerating ? 'Generating…' : 'Generate' }}
-      </button>
-
-      <!-- Progress -->
-      <div v-if="isGenerating" class="progress-wrap">
-        <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: progress.pct + '%' }" />
+      <!-- Input + result col -->
+      <div class="input-col">
+        <!-- Options row -->
+        <div class="options-row">
+          <div class="opt-group">
+            <span class="opt-label">Format</span>
+            <div class="mode-toggle">
+              <button class="mode-btn" :class="{ active: selectedFormat === 'wav' }" @click="selectedFormat = 'wav'">WAV</button>
+              <button class="mode-btn" :class="{ active: selectedFormat === 'mp3' }" @click="selectedFormat = 'mp3'">MP3</button>
+            </div>
+          </div>
+          <div class="opt-group">
+            <span class="opt-label">Speed</span>
+            <span class="speed-note font-mono">// speed control coming soon</span>
+          </div>
         </div>
-        <p class="progress-msg">{{ progress.message }}</p>
-      </div>
 
-      <!-- Error -->
-      <p v-if="error" class="error-msg">{{ error }}</p>
+        <!-- Textarea -->
+        <div class="text-field">
+          <textarea
+            class="input textarea"
+            v-model="text"
+            placeholder="Enter the text to synthesize…"
+            :disabled="isGenerating"
+            :maxlength="MAX_CHARS"
+          />
+          <span class="char-count" :class="{ warn: charWarn }">{{ text.length }} / {{ MAX_CHARS }}</span>
+        </div>
 
-      <!-- Result -->
-      <div v-if="audioUrl" class="result-wrap">
-        <p class="result-label">Result</p>
-        <audio class="audio-player" :src="audioUrl" controls />
-        <a
-          class="btn btn-ghost btn-sm"
-          :href="audioUrl"
-          :download="`tts-output.${audioFormat}`"
+        <!-- Generate button -->
+        <button
+          class="btn btn-primary gen-btn"
+          :disabled="isGenerating || !text.trim() || !selectedVoice"
+          @click="generate"
         >
-          Download {{ audioFormat.toUpperCase() }}
-        </a>
+          <svg v-if="!isGenerating" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span v-else class="spinner"></span>
+          {{ isGenerating ? 'Generating…' : 'Generate Speech' }}
+        </button>
+
+        <!-- Progress -->
+        <div v-if="isGenerating" class="prog-wrap">
+          <div class="prog-track"><div class="prog-fill" :style="{ width: progressPct + '%' }"></div></div>
+          <span class="prog-msg">{{ progressMsg }}</span>
+        </div>
+
+        <!-- Audio player -->
+        <div v-if="audioUrl" class="audio-result">
+          <audio
+            ref="audioEl"
+            :src="audioUrl"
+            style="display:none"
+            @timeupdate="onTimeUpdate"
+            @loadedmetadata="onLoadedMetadata"
+            @play="isPlaying = true"
+            @pause="isPlaying = false"
+            @ended="onEnded"
+          />
+          <div class="player">
+            <button class="play-btn" @click="togglePlay">
+              <svg v-if="!isPlaying" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            </button>
+            <div class="waveform-track" @click="scrub">
+              <div class="waveform-progress" :style="{ width: duration ? (currentTime / duration * 100) + '%' : '0%' }"></div>
+            </div>
+            <span class="time-display">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</span>
+          </div>
+          <a :href="audioUrl" :download="`tts.${audioFormat}`" class="btn btn-teal btn-sm">↓ Download {{ audioFormat.toUpperCase() }}</a>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
-<style scoped>
-.view {
-  padding: 40px 48px;
-  max-width: 760px;
-}
 
-.page-header { margin-bottom: 32px; }
-.page-title { font-size: 20px; font-weight: 600; letter-spacing: -0.025em; }
-.page-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
-
-.tts-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.controls-row {
-  display: flex;
-  gap: 12px;
-  align-items: flex-end;
-}
-.field { display: flex; flex-direction: column; gap: 6px; }
-.field-voice { flex: 1; }
-.field-format { width: 120px; flex-shrink: 0; }
-
-.label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
-  letter-spacing: 0.02em;
-}
-
-.select {
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236B6B6B' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 28px;
-}
-
-.textarea {
-  min-height: 220px;
-  resize: vertical;
-  font-family: inherit;
-  line-height: 1.6;
-}
-
-.char-count {
-  font-size: 11.5px;
-  color: var(--text-placeholder);
-  text-align: right;
-  margin: 0;
-}
-
-.generate-btn {
-  align-self: flex-start;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.spinner {
-  display: inline-block;
-  width: 13px;
-  height: 13px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.progress-wrap { display: flex; flex-direction: column; gap: 6px; }
-.progress-bar {
-  height: 4px;
-  background: var(--border);
-  border-radius: 99px;
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 99px;
-  transition: width 0.3s ease;
-}
-.progress-msg {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin: 0;
-}
-
-.error-msg {
-  font-size: 13px;
-  color: #c0392b;
-  margin: 0;
-  padding: 10px 14px;
-  background: #fdf2f2;
-  border: 1px solid #f5c6c6;
-  border-radius: var(--radius);
-}
-
-.result-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface-subtle);
-}
-.result-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  margin: 0;
-}
-.audio-player {
-  width: 100%;
-  height: 40px;
-  border-radius: var(--radius);
-}
+<style scoped lang="scss">
+@use './TextToSpeechView';
 </style>

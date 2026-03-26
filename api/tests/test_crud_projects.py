@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 
 class AsyncCursorMock:
@@ -21,17 +21,17 @@ class AsyncCursorMock:
 
 @pytest.fixture(autouse=True)
 def reset_crud_module():
-    """Re-import CRUD module fresh for each test so patches take effect."""
+    """Re-import repository module fresh for each test so patches take effect."""
     import importlib
-    import app.CRUD.projects as m
+    import app.repositories.projects as m
     importlib.reload(m)
     yield
 
 
 async def test_create_project_returns_uuid():
-    with patch("app.CRUD.projects.projects_collection") as mock_col:
+    with patch("app.repositories.projects.projects_collection") as mock_col:
         mock_col.insert_one = AsyncMock()
-        from app.CRUD.projects import create_project
+        from app.repositories.projects import create_project
 
         result = await create_project({"title": "Test"})
 
@@ -41,9 +41,9 @@ async def test_create_project_returns_uuid():
 
 
 async def test_create_project_stores_correct_data():
-    with patch("app.CRUD.projects.projects_collection") as mock_col:
+    with patch("app.repositories.projects.projects_collection") as mock_col:
         mock_col.insert_one = AsyncMock()
-        from app.CRUD.projects import create_project
+        from app.repositories.projects import create_project
 
         metadata = {"title": "My Video", "duration": 120}
         result = await create_project(metadata)
@@ -57,9 +57,9 @@ async def test_create_project_stores_correct_data():
 
 
 async def test_list_projects_empty():
-    with patch("app.CRUD.projects.projects_collection") as mock_col:
+    with patch("app.repositories.projects.projects_collection") as mock_col:
         mock_col.find.return_value = AsyncCursorMock([])
-        from app.CRUD.projects import list_projects
+        from app.repositories.projects import list_projects
 
         result = await list_projects()
 
@@ -72,9 +72,9 @@ async def test_list_projects_returns_all_documents():
         {"project_id": "id-1", "metadata": {"title": "A"}, "created_at": now, "updated_at": now},
         {"project_id": "id-2", "metadata": {"title": "B"}, "created_at": now, "updated_at": now},
     ]
-    with patch("app.CRUD.projects.projects_collection") as mock_col:
+    with patch("app.repositories.projects.projects_collection") as mock_col:
         mock_col.find.return_value = AsyncCursorMock(docs)
-        from app.CRUD.projects import list_projects
+        from app.repositories.projects import list_projects
 
         result = await list_projects()
 
@@ -92,9 +92,9 @@ async def test_list_projects_maps_fields_correctly():
         "created_at": now,
         "updated_at": now,
     }
-    with patch("app.CRUD.projects.projects_collection") as mock_col:
+    with patch("app.repositories.projects.projects_collection") as mock_col:
         mock_col.find.return_value = AsyncCursorMock([doc])
-        from app.CRUD.projects import list_projects
+        from app.repositories.projects import list_projects
 
         result = await list_projects()
 
@@ -105,9 +105,9 @@ async def test_list_projects_maps_fields_correctly():
 async def test_get_project_found():
     now = datetime.now()
     doc = {"project_id": "abc", "metadata": {"title": "T"}, "created_at": now, "updated_at": now}
-    with patch("app.CRUD.projects.projects_collection") as mock_col:
+    with patch("app.repositories.projects.projects_collection") as mock_col:
         mock_col.find_one = AsyncMock(return_value=doc)
-        from app.CRUD.projects import get_project
+        from app.repositories.projects import get_project
 
         result = await get_project("abc")
 
@@ -117,9 +117,9 @@ async def test_get_project_found():
 
 
 async def test_get_project_not_found():
-    with patch("app.CRUD.projects.projects_collection") as mock_col:
+    with patch("app.repositories.projects.projects_collection") as mock_col:
         mock_col.find_one = AsyncMock(return_value=None)
-        from app.CRUD.projects import get_project
+        from app.repositories.projects import get_project
 
         result = await get_project("nonexistent")
 

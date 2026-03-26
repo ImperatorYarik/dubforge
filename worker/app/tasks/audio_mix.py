@@ -32,10 +32,21 @@ def build_atempo_filter(ratio: float) -> str:
     return ",".join(filters)
 
 
-def stretch_clip(input_wav: str, output_wav: str, target_duration: float) -> bool:
+def stretch_clip(
+    input_wav: str,
+    output_wav: str,
+    target_duration: float,
+    atempo_min: float = None,
+    atempo_max: float = None,
+) -> bool:
+    if atempo_min is None:
+        atempo_min = settings.ATEMPO_MIN
+    if atempo_max is None:
+        atempo_max = settings.ATEMPO_MAX
+
     src_dur = get_duration(input_wav)
     ratio = src_dur / target_duration
-    clamped = max(settings.ATEMPO_MIN, min(ratio, settings.ATEMPO_MAX))
+    clamped = max(atempo_min, min(ratio, atempo_max))
 
     atempo = build_atempo_filter(clamped)
     fade_start = max(0.0, target_duration - 0.05)
@@ -61,15 +72,19 @@ def build_dubbed_audio(
     original_audio: str,
     segments: list[TranscriptSegment],
     output_wav: str,
-    duck_volume: float = settings.DUCK_VOLUME,
+    duck_volume: float = None,
+    ducking_enabled: bool = True,
 ) -> bool:
+    if duck_volume is None:
+        duck_volume = settings.DUCK_VOLUME
+
     total_dur = get_duration(original_audio)
 
     inputs = ["-i", original_audio]
     filter_parts = []
     labels = []
 
-    if duck_volume != 0.0:
+    if ducking_enabled and duck_volume != 0.0:
         if segments:
             duck_parts = "+".join([
                 f"between(t,{s.start},{s.end})*{duck_volume - 1}"
@@ -79,6 +94,9 @@ def build_dubbed_audio(
         else:
             duck_expr = "1"
         filter_parts.append(f"[0:a]volume='{duck_expr}'[orig]")
+        labels.append("[orig]")
+    else:
+        filter_parts.append("[0:a]acopy[orig]")
         labels.append("[orig]")
 
     for i, seg in enumerate(segments, start=1):
@@ -98,6 +116,7 @@ def build_dubbed_audio(
         *inputs,
         "-filter_complex", filter_complex,
         "-map", "[out]",
+        "-ar", str(settings.MIX_SAMPLE_RATE),
         "-t", str(total_dur),
         output_wav,
     ]
@@ -121,6 +140,8 @@ def mux_audio_into_video(video_path: str, audio_path: str, output_path: str) -> 
         "-i", audio_path,
         "-c:v", "copy",
         "-c:a", "aac",
+        "-b:a", settings.AAC_BITRATE,
+        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
         "-map", "0:v:0",
         "-map", "1:a:0",
         "-shortest",

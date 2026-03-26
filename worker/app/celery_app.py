@@ -6,7 +6,7 @@ celery = Celery(
     'video_trans_worker',
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.pipelines.dubbing_pipeline", "app.pipelines.transcribe_pipeline", "app.pipelines.tts_pipeline"],
+    include=["app.pipelines.dubbing_pipeline", "app.pipelines.transcribe_pipeline", "app.pipelines.tts_pipeline", "app.pipelines.demucs_pipeline"],
 )
 
 celery.conf.update(

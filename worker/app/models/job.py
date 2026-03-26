@@ -27,3 +27,10 @@ class TranscribeJobResult(BaseModel):
 class TtsJobResult(BaseModel):
     audio_url: str
     format: str
+
+
+class SeparateJobResult(BaseModel):
+    status: str
+    video_id: str
+    vocals_url: str
+    no_vocals_url: str

@@ -48,12 +48,13 @@ watch(() => props.videoId, load)
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .video-wrap {
   width: 100%;
   height: 100%;
   background: #000;
 }
+
 .player {
   width: 100%;
   height: 100%;
@@ -62,12 +63,13 @@ watch(() => props.videoId, load)
   object-fit: contain;
   background: #000;
 }
+
 .error-state {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: rgba(255,255,255,0.35);
+  color: rgb(255,255,255,0.35);
   font-size: 13px;
 }
 </style>

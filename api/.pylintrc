@@ -1,0 +1,15 @@
+[MASTER]
+# Add api/ to sys.path so app.* imports resolve correctly
+init-hook='import sys; sys.path.insert(0, ".")'
+
+[MESSAGES CONTROL]
+# Disable convention (C) and refactoring (R) categories — too noisy for CI hooks.
+# Keep errors (E) and warnings (W) with a few targeted suppressions below.
+disable=
+    C,
+    R,
+    W0511,  # fixme — TODO comments are tracked in issues, not lint
+    W1203,  # logging-fstring-interpolation — f-strings in logging are acceptable here
+
+[FORMAT]
+max-line-length=120
