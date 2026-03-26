@@ -216,7 +216,7 @@ function formatDate(d) {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .view { padding: 28px 32px; max-width: 900px; }
 
 .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; }

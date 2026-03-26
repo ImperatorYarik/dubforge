@@ -1,0 +1,14 @@
+/* -------- Shared Input -------- */
+.input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg3);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: var(--font-body);
+}
+.input::placeholder { color: var(--muted); }
+.input:focus { border-color: var(--b-amber); }

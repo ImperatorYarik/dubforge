@@ -1,0 +1,40 @@
+/* -------- Card / Panel -------- */
+.panel {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* -------- Progress bar -------- */
+
+/* @keyframes progress-shimmer is defined in _animations.scss */
+.progress-bar-indeterminate {
+  background: linear-gradient(90deg, var(--amber-d) 0%, var(--amber) 50%, var(--amber-d) 100%);
+  background-size: 400px 100%;
+  animation: progress-shimmer 1.5s infinite linear;
+}
+
+/* -------- Banners -------- */
+.worker-banner {
+  background: var(--amber-g);
+  border-bottom: 1px solid var(--b-amber);
+  color: var(--amber);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 7px 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.error-banner {
+  background: var(--red-g);
+  border: 1px solid var(--b-red);
+  border-radius: var(--radius);
+  color: var(--red);
+  font-size: 13px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

@@ -143,7 +143,7 @@ function playAudio(name, url) {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .view { padding: 28px 32px; max-width: 1000px; }
 
 .page-header { margin-bottom: 20px; }
@@ -178,7 +178,7 @@ function playAudio(name, url) {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
-  color: rgba(255,255,255,0.9);
+  color: rgb(255,255,255,0.9);
   flex-shrink: 0;
 }
 
@@ -205,6 +205,6 @@ function playAudio(name, url) {
 .preview-btn:disabled { opacity: 0.4; }
 .preview-btn.loading { border-color: var(--b-amber); color: var(--amber); }
 
-.spinner-sm { display: inline-block; width: 10px; height: 10px; border: 1.5px solid rgba(232,160,32,0.3); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.7s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.spinner-sm { display: inline-block; width: 10px; height: 10px; border: 1.5px solid rgb(232,160,32,0.3); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.7s linear infinite; }
+
 </style>

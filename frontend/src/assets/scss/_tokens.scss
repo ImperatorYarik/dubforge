@@ -1,0 +1,35 @@
+/* -------- DubForge Design System — Cinema Control Room -------- */
+:root {
+  --bg:      #07080a;
+  --bg2:     #0d0e11;
+  --bg3:     #121318;
+  --bg4:     #17181e;
+  --amber:   #e8a020;
+  --amber-d: #a06c10;
+  --amber-g: rgb(232,160,32,0.10);
+  --teal:    #18c5a0;
+  --teal-g:  rgb(24,197,160,0.10);
+  --red:     #e05050;
+  --red-g:   rgb(224,80,80,0.10);
+  --text:    #dedad2;
+  --muted:   #8f8d87;
+  --dim:     #3a3935;
+  --border:  rgb(255,255,255,0.06);
+  --b-amber: rgb(232,160,32,0.18);
+  --b-teal:  rgb(24,197,160,0.18);
+  --b-red:   rgb(224,80,80,0.18);
+  --font-display: 'Bebas Neue', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+  --font-body:    'DM Sans', sans-serif;
+  --sidebar-width: 220px;
+  --topbar-height: 50px;
+  --radius: 6px;
+  --radius-lg: 10px;
+
+  /* Compatibility aliases for components using older variable names */
+  --color-text: var(--text);
+  --color-accent: var(--amber);
+  --text-placeholder: var(--muted);
+  --surface-hover: rgb(255,255,255,0.04);
+  --accent: var(--amber);
+}

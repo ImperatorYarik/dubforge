@@ -35,7 +35,7 @@ function formatDate(iso) {
   </RouterLink>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .project-card {
   display: flex;
   flex-direction: column;
@@ -47,7 +47,7 @@ function formatDate(iso) {
 
 .project-card:hover {
   border-color: var(--color-accent);
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.12);
+  box-shadow: 0 4px 20px rgb(99, 102, 241, 0.12);
 }
 
 .card-body {

@@ -24,7 +24,7 @@ const { toasts, removeToast } = useToast()
   </Teleport>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .toast-container {
   position: fixed;
   bottom: 24px;
@@ -47,7 +47,7 @@ const { toasts, removeToast } = useToast()
   border: 1px solid var(--border);
   background: var(--bg3);
   color: var(--text);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 24px rgb(0,0,0,0.4);
 }
 
 .toast-msg {

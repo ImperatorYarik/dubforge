@@ -23,7 +23,7 @@ const isActive = (path) => computed(() => route.path.startsWith(path))
   </header>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .app-header {
   display: flex;
   align-items: center;

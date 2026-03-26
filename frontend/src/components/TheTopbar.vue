@@ -44,7 +44,7 @@ const modelBadge = computed(() => {
   </header>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .topbar {
   height: var(--topbar-height);
   background: var(--bg2);
@@ -55,11 +55,13 @@ const modelBadge = computed(() => {
   padding: 0 24px;
   flex-shrink: 0;
 }
+
 .topbar-left {
   display: flex;
   align-items: center;
   gap: 10px;
 }
+
 .topbar-title {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -68,6 +70,7 @@ const modelBadge = computed(() => {
   text-transform: uppercase;
   color: var(--muted);
 }
+
 .topbar-project {
   font-family: var(--font-body);
   font-size: 12px;
@@ -79,11 +82,13 @@ const modelBadge = computed(() => {
   text-overflow: ellipsis;
   max-width: 280px;
 }
+
 .topbar-project::before {
   content: '·';
   margin-right: 10px;
   color: var(--dim);
 }
+
 .topbar-badges {
   display: flex;
   align-items: center;

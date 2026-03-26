@@ -40,18 +40,21 @@ onUnmounted(() => {
   <AppToast />
 </template>
 
-<style>
+<style lang="scss">
 #app { height: 100%; }
+
 .shell {
   display: flex;
   min-height: 100vh;
 }
+
 .main-col {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
+
 .main {
   flex: 1;
   overflow-y: auto;

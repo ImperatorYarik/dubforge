@@ -93,7 +93,7 @@ async function handleTranscribe(video) {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .page-header {
   display: flex;
   align-items: center;
@@ -124,6 +124,7 @@ async function handleTranscribe(video) {
 .slide-leave-active {
   transition: all 0.2s ease;
 }
+
 .slide-enter-from,
 .slide-leave-to {
   opacity: 0;

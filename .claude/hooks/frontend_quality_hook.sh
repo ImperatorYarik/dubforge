@@ -1,13 +1,13 @@
 #!/bin/bash
 # PostToolUse hook — quality checks for frontend files.
-# Runs: ESLint (lint), Vitest (unit tests).
-# Triggers only when a .vue or .js file inside frontend/src/ is written or edited.
+# Runs: ESLint (lint), Stylelint (CSS/SCSS), Vitest (unit tests).
+# Triggers only when a .vue, .js, or .scss file inside frontend/src/ is written or edited.
 
 INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 
-# Only trigger for .vue/.js files under frontend/src/
-echo "$FILE_PATH" | grep -qE '.*/frontend/src/.*\.(vue|js)$' || exit 0
+# Only trigger for .vue/.js/.scss files under frontend/src/
+echo "$FILE_PATH" | grep -qE '.*/frontend/src/.*\.(vue|js|scss)$' || exit 0
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 FRONTEND="$PROJECT_ROOT/frontend"
@@ -46,7 +46,27 @@ else
     fi
 fi
 
-# ── 2. Vitest ────────────────────────────────────────────────────────────────
+# ── 2. Stylelint (CSS/SCSS) ──────────────────────────────────────────────────
+echo ""
+echo "── Stylelint (CSS/SCSS) ───────────────"
+STYLELINT_OUT=$(npm run lint:styles 2>&1)
+STYLELINT_EXIT=$?
+
+if [ "$STYLELINT_EXIT" -ne 0 ]; then
+    echo "$STYLELINT_OUT"
+    echo "✗ stylelint errors found"
+    FAIL=1
+else
+    WARN_COUNT=$(echo "$STYLELINT_OUT" | grep -c 'warning' || true)
+    if [ "$WARN_COUNT" -gt 0 ]; then
+        echo "$STYLELINT_OUT"
+        echo "⚠  $WARN_COUNT warning(s)"
+    else
+        echo "✓ clean"
+    fi
+fi
+
+# ── 3. Vitest ────────────────────────────────────────────────────────────────
 echo ""
 echo "── Vitest (unit tests) ────────────────"
 VITEST_OUT=$(npm run test 2>&1)

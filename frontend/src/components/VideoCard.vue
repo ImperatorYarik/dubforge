@@ -70,7 +70,7 @@ function shortPath(url) {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .video-card {
   display: flex;
   flex-direction: column;
@@ -133,11 +133,13 @@ function shortPath(url) {
   transition: all 0.25s ease;
   overflow: hidden;
 }
+
 .expand-enter-from,
 .expand-leave-to {
   opacity: 0;
   max-height: 0;
 }
+
 .expand-enter-to,
 .expand-leave-from {
   opacity: 1;

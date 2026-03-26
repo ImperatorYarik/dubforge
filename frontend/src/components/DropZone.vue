@@ -58,7 +58,7 @@ function submit() {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .wrap {
   display: flex;
   flex-direction: column;
@@ -75,6 +75,7 @@ function submit() {
   background: var(--surface);
   user-select: none;
 }
+
 .zone:hover, .zone.dragging {
   border-color: #A1A1AA;
   background: var(--surface-subtle);
@@ -86,12 +87,14 @@ function submit() {
   margin-bottom: 12px;
   line-height: 1;
 }
+
 .label {
   font-size: 15px;
   font-weight: 500;
   color: var(--text);
   margin-bottom: 4px;
 }
+
 .hint {
   font-size: 13px;
   color: var(--text-muted);
