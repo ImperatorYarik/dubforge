@@ -40,3 +40,6 @@ htmlcov/
 
 # Misc
 tmp
+
+#CLAUDE.md backups
+CLAUDE.md.bak
