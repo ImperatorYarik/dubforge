@@ -34,6 +34,14 @@ def mock_register_job():
         yield
 
 
+@pytest.fixture(autouse=True)
+def mock_storage_exists():
+    """Default storage pre-flight to True so existing tests are unaffected."""
+    with patch("app.routers.jobs.storage") as mock_storage:
+        mock_storage.object_exists.return_value = True
+        yield mock_storage
+
+
 class TestDubVideo:
     def test_returns_task_id(self, client):
         with (
@@ -186,6 +194,25 @@ class TestDubVideo:
 
         assert resp.json()["error"] == "Video not found"
 
+    def test_returns_error_when_source_file_missing_from_storage(self, client, mock_storage_exists):
+        mock_storage_exists.object_exists.return_value = False
+        with patch("app.routers.jobs.videos_repo") as mock_videos:
+            mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
+            resp = client.post("/jobs/dub?project_id=proj-1&video_id=vid-1")
+
+        assert "error" in resp.json()
+
+    def test_does_not_enqueue_when_source_file_missing(self, client, mock_storage_exists):
+        mock_storage_exists.object_exists.return_value = False
+        with (
+            patch("app.routers.jobs.videos_repo") as mock_videos,
+            patch("app.routers.jobs.celery") as mock_celery,
+        ):
+            mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
+            client.post("/jobs/dub?project_id=proj-1&video_id=vid-1")
+
+        mock_celery.send_task.assert_not_called()
+
 
 class TestTranscribeVideo:
     def test_returns_task_id(self, client):
@@ -307,6 +334,25 @@ class TestTranscribeVideo:
         call_kwargs = mock_celery.send_task.call_args[1]["kwargs"]
         assert call_kwargs["vocals_url"] == "http://s3/vocals.wav"
         assert call_kwargs["no_vocals_url"] == "http://s3/no_vocals.wav"
+
+    def test_returns_error_when_source_file_missing_from_storage(self, client, mock_storage_exists):
+        mock_storage_exists.object_exists.return_value = False
+        with patch("app.routers.jobs.videos_repo") as mock_videos:
+            mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
+            resp = client.post("/jobs/transcribe?project_id=proj-1&video_id=vid-1")
+
+        assert "error" in resp.json()
+
+    def test_does_not_enqueue_when_source_file_missing(self, client, mock_storage_exists):
+        mock_storage_exists.object_exists.return_value = False
+        with (
+            patch("app.routers.jobs.videos_repo") as mock_videos,
+            patch("app.routers.jobs.celery") as mock_celery,
+        ):
+            mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
+            client.post("/jobs/transcribe?project_id=proj-1&video_id=vid-1")
+
+        mock_celery.send_task.assert_not_called()
 
 
 class TestGetJobStatus:

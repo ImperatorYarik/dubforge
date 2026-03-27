@@ -15,10 +15,11 @@ A microservice web application that dubs videos to English using AI. Upload a vi
 4. [Setup Runbook](#setup-runbook)
    - [Step 1 — Clone the repository](#step-1--clone-the-repository)
    - [Step 2 — Create the environment file](#step-2--create-the-environment-file)
-   - [Step 3 — Start infrastructure services](#step-3--start-infrastructure-services)
-   - [Step 4 — Verify services are healthy](#step-4--verify-services-are-healthy)
-   - [Step 5 — Start the worker (GPU required)](#step-5--start-the-worker-gpu-required)
-   - [Step 6 — Open the app](#step-6--open-the-app)
+   - [Step 3 — Configure local DNS](#step-3--configure-local-dns-etchosts)
+   - [Step 4 — Start infrastructure services](#step-4--start-infrastructure-services)
+   - [Step 5 — Verify services are healthy](#step-5--verify-services-are-healthy)
+   - [Step 6 — Start the worker (GPU required)](#step-6--start-the-worker-gpu-required)
+   - [Step 7 — Open the app](#step-7--open-the-app)
 5. [Service Reference](#service-reference)
 6. [API Endpoints](#api-endpoints)
 7. [Storage Layout](#storage-layout)
@@ -216,7 +217,39 @@ HF_TOKEN=
 
 > `S3_PUBLIC_ENDPOINT` must be reachable from your browser. Use `http://localhost:9000` for local dev.
 
-### Step 3 — Start infrastructure services
+### Step 3 — Configure local DNS (`/etc/hosts`)
+
+An nginx reverse proxy is included in the dev stack that routes requests by subdomain. Add the following entries to `/etc/hosts` (requires `sudo`):
+
+```bash
+sudo tee -a /etc/hosts <<'EOF'
+
+# dubforge local dev
+127.0.0.1 dubforge.local
+127.0.0.1 api.dubforge.local
+127.0.0.1 grafana.dubforge.local
+127.0.0.1 prometheus.dubforge.local
+127.0.0.1 minio.dubforge.local
+127.0.0.1 minio-console.dubforge.local
+127.0.0.1 loki.dubforge.local
+EOF
+```
+
+After adding these, the services are accessible at:
+
+| Subdomain | Service |
+|---|---|
+| http://dubforge.local | Frontend |
+| http://api.dubforge.local | API + Swagger docs (`/docs`) |
+| http://grafana.dubforge.local | Grafana dashboards |
+| http://prometheus.dubforge.local | Prometheus |
+| http://minio.dubforge.local | MinIO S3 API |
+| http://minio-console.dubforge.local | MinIO Web Console |
+| http://loki.dubforge.local | Loki |
+
+> Direct port access still works (e.g. `localhost:8000`) if you prefer to skip nginx.
+
+### Step 4 — Start infrastructure services
 
 **Option A — Full stack with GPU worker:**
 
@@ -237,7 +270,7 @@ Docker will:
 
 > First startup downloads AI model weights (~5–10 GB). This can take 10–30 minutes depending on your connection. Subsequent startups are fast.
 
-### Step 4 — Verify services are healthy
+### Step 5 — Verify services are healthy
 
 Check all containers are running:
 
@@ -277,7 +310,7 @@ docker compose logs -f api             # follow API logs
 docker compose logs -f worker          # follow worker / model loading progress
 ```
 
-### Step 5 — Start the worker (GPU required)
+### Step 6 — Start the worker (GPU required)
 
 If you started with Option B and later want to enable the worker:
 
@@ -296,13 +329,16 @@ The worker logs will show model download and load progress:
 [Worker] Whisper ready. Worker accepting tasks.
 ```
 
-### Step 6 — Open the app
+### Step 7 — Open the app
 
-| Service | URL | Credentials |
-|---|---|---|
-| Frontend | http://localhost:5173 | — |
-| API docs (Swagger) | http://localhost:8000/docs | — |
-| MinIO console | http://localhost:9001 | `minioadmin` / `minioadmin` |
+| Service | URL (subdomain) | URL (direct port) | Credentials |
+|---|---|---|---|
+| Frontend | http://dubforge.local | http://localhost:5173 | — |
+| API docs (Swagger) | http://api.dubforge.local/docs | http://localhost:8000/docs | — |
+| Grafana | http://grafana.dubforge.local | http://localhost:3000 | `admin` / `admin` |
+| Prometheus | http://prometheus.dubforge.local | http://localhost:9090 | — |
+| MinIO console | http://minio-console.dubforge.local | http://localhost:9001 | `minioadmin` / `minioadmin` |
+| Loki | http://loki.dubforge.local | http://localhost:3100 | — |
 
 **Quick first-use flow:**
 1. Open http://localhost:5173
@@ -317,12 +353,21 @@ The worker logs will show model download and load progress:
 
 | Service | Container | Port | Tech | Notes |
 |---|---|---|---|---|
-| `frontend` | `video-trans-frontend` | 5173 | Vue 3 + Vite + Pinia | Served via nginx in container |
+| `frontend` | `video-trans-frontend` | 5173 | Vue 3 + Vite + Pinia | Vite dev server on port 80 inside container |
 | `api` | `video-trans-api` | 8000 | FastAPI + Motor | Auto-reload enabled (`--reload`) |
 | `worker` | `video-trans-worker` | — | Celery (solo pool) | Requires NVIDIA GPU |
 | `mongodb` | `mongodb` | 27017 | MongoDB latest | Data persisted in `mongo_data` volume |
 | `redis` | `redis` | 6379 | Redis 7 Alpine | Celery broker + pub/sub |
 | `minio` | `minio` | 9000 / 9001 | MinIO | S3-compatible; data in `minio_data` volume |
+| `nginx` | `nginx` | 80 | nginx:alpine | Reverse proxy — subdomain routing (dev only, via override) |
+| `prometheus` | `prometheus` | 9090 | Prometheus | Metrics scraping (dev only, via override) |
+| `grafana` | `grafana` | 3000 | Grafana | Dashboards — `admin`/`admin` (dev only, via override) |
+| `loki` | `loki` | 3100 | Grafana Loki | Log aggregation (dev only, via override) |
+| `promtail` | `promtail` | — | Grafana Promtail | Ships Docker container logs to Loki (dev only, via override) |
+| `redis-exporter` | `redis-exporter` | 9121 | oliver006/redis_exporter | Exports Redis metrics to Prometheus |
+| `mongodb-exporter` | `mongodb-exporter` | 9216 | percona/mongodb_exporter | Exports MongoDB metrics to Prometheus |
+| `node-exporter` | `node-exporter` | 9100 | prom/node-exporter | Exports host system metrics |
+| `nvidia-gpu-exporter` | `nvidia-gpu-exporter` | 9835 | utkuozdemir/nvidia_gpu_exporter | Exports GPU metrics |
 
 **Useful commands:**
 

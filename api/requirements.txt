@@ -9,3 +9,4 @@ pydantic-settings
 celery
 redis
 ffmpeg
+prometheus-fastapi-instrumentator
