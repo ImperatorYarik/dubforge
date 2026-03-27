@@ -2,6 +2,3 @@ pylint
 bandit
 radon
 pytest
-pytest-asyncio
-anyio
-httpx

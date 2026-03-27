@@ -1,5 +1,5 @@
 import logging
-import subprocess
+import subprocess  # nosec B404 — used only to call nvidia-smi with fixed args, no user input
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter
@@ -14,7 +14,7 @@ router = APIRouter()
 def _gpu_info() -> dict:
     """Return GPU info via nvidia-smi. Falls back to zeros if unavailable."""
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607 — fixed args only, no user-controlled input
             ["nvidia-smi", "--query-gpu=name,memory.used,memory.total", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,

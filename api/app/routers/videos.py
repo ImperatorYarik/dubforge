@@ -138,6 +138,6 @@ async def delete_dubbed_version(video_id: str, job_id: str):
         raise HTTPException(status_code=404, detail="Dubbed version not found")
     try:
         storage.delete_object(_object_key_from_url(deleted["url"]))
-    except Exception:
-        pass  # best-effort MinIO deletion; DB record is already removed
+    except Exception:  # nosec B110 — best-effort MinIO deletion; DB record is already removed
+        pass
     return JSONResponse({"deleted": job_id})
