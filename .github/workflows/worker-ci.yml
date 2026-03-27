@@ -22,10 +22,21 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: worker/requirements-dev.txt
+          cache-dependency-path: |
+            worker/requirements.txt
+            worker/requirements-dev.txt
 
       - name: Install dev dependencies
         run: pip install -r requirements-dev.txt
+
+      - name: Install non-GPU runtime dependencies
+        # Install packages that are resolvable without CUDA so pylint can
+        # analyse imports. GPU/ML packages (faster-whisper, TTS, demucs) are
+        # excluded — their modules are listed under ignored-modules in .pylintrc.
+        run: |
+          pip install \
+            celery redis pydantic-settings pydantic \
+            boto3 pymongo soundfile watchdog
 
       - name: pylint
         run: pylint app --fail-under=7.0
