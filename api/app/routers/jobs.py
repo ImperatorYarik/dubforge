@@ -5,12 +5,17 @@ from urllib.parse import urlparse
 import redis.asyncio as aioredis
 from celery.result import AsyncResult
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
 from app.config import settings
 from app.core.celery import celery
 from app.core.storage import storage
 from app.repositories import videos as videos_repo
 from app.services.jobs import enrich_result, persist_job_result, register_job
+
+
+class DubBody(BaseModel):
+    segments: Optional[list[dict]] = None
 
 
 def _object_key_from_url(url: str) -> str:
@@ -27,10 +32,12 @@ async def dub_video(
     project_id: str,
     video_id: str,
     skip_transcription: bool = False,
+    translation_mode: str = "whisper",
     ducking_enabled: bool = True,
     ducking_level: float = 0.3,
     atempo_min: float = 0.75,
     atempo_max: float = 1.5,
+    body: Optional[DubBody] = None,
 ):
     video = await videos_repo.get_video(video_id)
     if not video:
@@ -40,6 +47,11 @@ async def dub_video(
     ducking_level = max(0.0, min(1.0, ducking_level))
     atempo_min = max(0.5, min(0.95, atempo_min))
     atempo_max = max(1.05, min(2.0, atempo_max))
+    # When caller provides segments directly (e.g. LLM-translated), use them instead of DB copy
+    override_segments = body.segments if body and body.segments else None
+    existing_segments = override_segments if override_segments is not None else (
+        video.get("transcript_segments") if skip_transcription else None
+    )
     task = celery.send_task(
         "app.pipelines.dubbing_pipeline.dub_video",
         args=[project_id, video_id, video["video_url"]],
@@ -47,7 +59,7 @@ async def dub_video(
             "vocals_url": video.get("vocals_url"),
             "no_vocals_url": video.get("no_vocals_url"),
             "existing_transcription": video.get("transcription") if skip_transcription else None,
-            "existing_segments": video.get("transcript_segments") if skip_transcription else None,
+            "existing_segments": existing_segments,
             "existing_detected_language": video.get("detected_language") if skip_transcription else None,
             "existing_duration_seconds": video.get("duration_seconds") if skip_transcription else None,
             "skip_transcription": skip_transcription,

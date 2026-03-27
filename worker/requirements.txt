@@ -1,5 +1,6 @@
 celery
 redis
+requests
 pydantic-settings
 pydantic
 boto3

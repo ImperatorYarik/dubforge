@@ -7,7 +7,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.config import settings
 from app.core.storage import storage
-from app.routers import jobs, projects, system, tts, videos
+from app.routers import jobs, llm, projects, system, tts, videos
 
 app = FastAPI()
 
@@ -37,3 +37,4 @@ app.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 app.include_router(videos.router, prefix="/videos", tags=["videos"])
 app.include_router(tts.router, prefix="/tts", tags=["tts"])
 app.include_router(system.router, prefix="/system", tags=["system"])
+app.include_router(llm.router, prefix="/llm", tags=["llm"])

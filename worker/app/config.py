@@ -29,6 +29,10 @@ class Settings(BaseSettings):
 
     PROGRESS_TTL_SECONDS: int = 3600
 
+    OLLAMA_BASE_URL: str = "http://ollama:11434"
+    OLLAMA_DEFAULT_MODEL: str = "llama3.2"
+    LLM_TRANSLATION_TIMEOUT_SECONDS: int = 60
+
     class Config:
         env_file = ".env"
 

@@ -8,7 +8,10 @@ import { useToast } from '@/composables/useToast'
 import VideoPlayer from '@/components/VideoPlayer.vue'
 import TranscriptPanel from '@/components/TranscriptPanel.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
+import ContextReviewPanel from '@/components/ContextReviewPanel.vue'
 import { getDubbedStreamUrl, getVocalsStreamUrl, getNoVocalsStreamUrl, getDubbedVersionStreamUrl, deleteDubbedVersion } from '@/api/videos'
+import * as jobsApi from '@/api/jobs'
+import * as llmApi from '@/api/llm'
 
 const route  = useRoute()
 const router = useRouter()
@@ -29,6 +32,16 @@ const transcription   = ref('')
 const translateMode   = ref(false)
 const showRegenMenu   = ref(false)
 const currentJobType  = ref(null)  // 'dub' | 'transcribe' | 'separate' | null
+
+// LLM translation mode state
+const translationMethod   = ref('whisper')  // 'whisper' | 'llm'
+const llmModel            = ref('')
+const availableModels     = ref([])
+const autoConfirmContext  = ref(false)
+const collectedContext    = ref('')
+const contextReviewModel  = ref('')
+const contextRegenLoading = ref(false)
+const llmProgressMsg      = ref('')
 
 // Tab navigation
 const activeTab = ref('transcript') // 'transcript' | 'audio' | 'versions'
@@ -139,6 +152,179 @@ function onProgress({ pct, message }) {
   progressMsg.value = message
 }
 
+async function _fetchModels() {
+  try {
+    const { data } = await llmApi.getModels()
+    availableModels.value = data.models || []
+    if (availableModels.value.length && !llmModel.value) {
+      llmModel.value = availableModels.value[0]
+    }
+  } catch {
+    availableModels.value = []
+  }
+}
+
+watch(translationMethod, (val) => {
+  if (val === 'llm') _fetchModels()
+})
+
+async function _pollStatus(getStatus, intervalMs = 1500) {
+  return new Promise((resolve, reject) => {
+    const timer = setInterval(async () => {
+      try {
+        const { data } = await getStatus()
+        if (data.status === 'completed') {
+          clearInterval(timer)
+          resolve(data)
+        } else if (data.status === 'failed') {
+          clearInterval(timer)
+          reject(new Error(data.error || 'Task failed'))
+        }
+      } catch (e) {
+        clearInterval(timer)
+        reject(e)
+      }
+    }, intervalMs)
+  })
+}
+
+async function generateDubWithLLM() {
+  const video = sourceVideo.value
+  if (!video) return
+
+  isProcessing.value = true
+  currentJobType.value = 'dub'
+  progressPct.value = 0
+  progressMsg.value = 'Starting…'
+  dubbedDirectUrl.value = null
+  translatedSegs.value = []
+  selectedVersionJobId.value = null
+  jobsStore.setLlmPhase(null)
+
+  try {
+    // Step 1: Transcribe (no translation)
+    const { data: trData } = await jobsApi.transcribeVideo(route.params.id, video.video_id, {
+      translate: false,
+    })
+    jobsStore.startJob(trData.task_id, 'transcribe', video.video_id, route.params.id)
+    await jobsStore.connectWS(trData.task_id, onProgress)
+    const trStatus = await jobsStore.fetchStatus(trData.task_id)
+    const rawSegments = trStatus.result?.transcript_segments || []
+
+    // Step 2: Collect context
+    jobsStore.setLlmPhase('collecting_context')
+    llmProgressMsg.value = 'Collecting context…'
+    const model = llmModel.value || undefined
+    const { data: ctxData } = await llmApi.collectContext(route.params.id, video.video_id, model)
+    const ctxResult = await _pollStatus(() => llmApi.getContextStatus(ctxData.task_id))
+    collectedContext.value = ctxResult.context
+    contextReviewModel.value = ctxResult.model
+
+    // Step 3: Review (or auto-confirm)
+    if (!autoConfirmContext.value) {
+      jobsStore.setLlmPhase('awaiting_review')
+      // Suspend — ContextReviewPanel will call onContextConfirmed
+      return
+    }
+
+    await _continueFromContext(rawSegments, collectedContext.value)
+  } catch (e) {
+    toast.error('LLM dubbing failed: ' + e.message)
+    jobsStore.setLlmPhase(null)
+  } finally {
+    if (jobsStore.llmPhase !== 'awaiting_review') {
+      isProcessing.value = false
+      currentJobType.value = null
+      progressPct.value = 0
+      progressMsg.value = ''
+      llmProgressMsg.value = ''
+    }
+  }
+}
+
+async function onContextConfirmed(editedContext) {
+  collectedContext.value = editedContext
+  jobsStore.setLlmPhase(null)
+
+  const video = sourceVideo.value
+  const rawSegments = video?.transcript_segments || []
+
+  try {
+    await _continueFromContext(rawSegments, editedContext)
+  } catch (e) {
+    toast.error('LLM dubbing failed: ' + e.message)
+    jobsStore.setLlmPhase(null)
+  } finally {
+    isProcessing.value = false
+    currentJobType.value = null
+    progressPct.value = 0
+    progressMsg.value = ''
+    llmProgressMsg.value = ''
+  }
+}
+
+async function onContextRegenerate() {
+  contextRegenLoading.value = true
+  try {
+    const model = llmModel.value || undefined
+    const { data: ctxData } = await llmApi.collectContext(route.params.id, sourceVideo.value.video_id, model)
+    const ctxResult = await _pollStatus(() => llmApi.getContextStatus(ctxData.task_id))
+    collectedContext.value = ctxResult.context
+    contextReviewModel.value = ctxResult.model
+  } catch (e) {
+    toast.error('Context regeneration failed: ' + e.message)
+  } finally {
+    contextRegenLoading.value = false
+  }
+}
+
+async function _continueFromContext(rawSegments, context) {
+  const video = sourceVideo.value
+  if (!video) return
+  const model = llmModel.value || undefined
+
+  // Step 4: Translate segments
+  jobsStore.setLlmPhase('translating')
+  llmProgressMsg.value = 'Translating segments…'
+  progressPct.value = 0
+  const { data: trSegData } = await llmApi.translateSegments({
+    video_id: video.video_id,
+    segments: rawSegments,
+    context,
+    model,
+  })
+  const trSegResult = await _pollStatus(() => llmApi.getTranslateStatus(trSegData.task_id))
+  const translatedSegments = trSegResult.segments
+
+  // Step 5: Dub with translated segments
+  jobsStore.setLlmPhase('ready')
+  progressMsg.value = 'Starting dub…'
+  const result = await jobsStore.dub(
+    route.params.id,
+    video.video_id,
+    { skip_transcription: true, segments: translatedSegments },
+    onProgress,
+  )
+
+  if (result?.dubbed_url) {
+    try {
+      const { data } = await getDubbedStreamUrl(video.video_id)
+      dubbedDirectUrl.value = data.url
+    } catch { dubbedDirectUrl.value = result.dubbed_url }
+  }
+  const updated = await videosStore.fetchVideo(video.video_id)
+  if (updated?.transcription) {
+    transcription.value = updated.transcription
+    translatedSegs.value = updated?.transcript_segments?.length
+      ? updated.transcript_segments
+      : _parseSegments(updated.transcription)
+  }
+  await _loadStreams()
+  activeTab.value = 'versions'
+  jobsStore.setLlmPhase(null)
+  toast.success('LLM Dubbing complete')
+}
+
 async function generateTranscription() {
   if (!sourceVideo.value) return
   isProcessing.value = true
@@ -171,6 +357,9 @@ async function generateTranscription() {
 }
 
 async function generateDub() {
+  if (translationMethod.value === 'llm') {
+    return generateDubWithLLM()
+  }
   if (!sourceVideo.value) return
   isProcessing.value = true
   currentJobType.value = 'dub'
@@ -329,25 +518,64 @@ function fmtDate(d) {
         </div>
       </div>
 
-      <label class="translate-toggle" :class="{ active: translateMode }">
-        <input type="checkbox" v-model="translateMode" :disabled="isProcessing" />
-        Translate
-      </label>
+      <div class="header-controls">
+        <label class="translate-toggle" :class="{ active: translateMode }">
+          <input type="checkbox" v-model="translateMode" :disabled="isProcessing" />
+          Translate
+        </label>
+        <div class="translation-method-group">
+          <span class="method-label">Translation:</span>
+          <label class="method-radio" :class="{ active: translationMethod === 'whisper' }">
+            <input type="radio" v-model="translationMethod" value="whisper" :disabled="isProcessing" />
+            Whisper
+          </label>
+          <label class="method-radio" :class="{ active: translationMethod === 'llm' }">
+            <input type="radio" v-model="translationMethod" value="llm" :disabled="isProcessing" />
+            LLM (Ollama)
+          </label>
+        </div>
+        <template v-if="translationMethod === 'llm'">
+          <select
+            v-model="llmModel"
+            class="model-select"
+            :disabled="isProcessing"
+            data-testid="llm-model-select"
+          >
+            <option v-if="!availableModels.length" value="" disabled>Ollama unavailable</option>
+            <option v-for="m in availableModels" :key="m" :value="m">{{ m }}</option>
+          </select>
+          <label class="auto-confirm-toggle">
+            <input type="checkbox" v-model="autoConfirmContext" :disabled="isProcessing" />
+            Auto-confirm context
+          </label>
+          <span class="llm-info-badge">ℹ LLM mode adds a context review step before translation</span>
+        </template>
+      </div>
     </header>
 
     <div class="content">
 
       <!-- ── Processing Banner ──────────────────────────────────── -->
-      <div v-if="isProcessing" class="progress-banner">
+      <div v-if="isProcessing && jobsStore.llmPhase !== 'awaiting_review'" class="progress-banner">
         <div class="banner-spinner"></div>
         <div class="banner-body">
-          <span class="banner-msg">{{ progressMsg || 'Processing…' }}</span>
+          <span class="banner-msg">{{ llmProgressMsg || progressMsg || 'Processing…' }}</span>
           <div class="banner-track">
             <div class="banner-fill" :style="{ width: progressPct + '%' }"></div>
           </div>
         </div>
         <span class="banner-pct">{{ progressPct }}%</span>
       </div>
+
+      <!-- ── LLM Context Review Panel ───────────────────────────── -->
+      <ContextReviewPanel
+        v-if="jobsStore.llmPhase === 'awaiting_review'"
+        :context="collectedContext"
+        :model="contextReviewModel"
+        :loading="contextRegenLoading"
+        @confirm="onContextConfirmed"
+        @regenerate="onContextRegenerate"
+      />
 
       <!-- ── Video Comparison ───────────────────────────────────── -->
       <div class="videos-grid">

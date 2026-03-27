@@ -14,8 +14,10 @@ export function dubVideo(projectId, videoId, options = {}) {
     ducking_level = 0.3,
     atempo_min = 0.75,
     atempo_max = 1.5,
+    segments = null,
   } = options
-  return client.post('/jobs/dub', null, {
+  const body = segments ? { segments } : null
+  return client.post('/jobs/dub', body, {
     params: {
       project_id: projectId,
       video_id: videoId,

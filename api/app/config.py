@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://redis:6379/0"
     ALLOWED_ORIGINS: list[str] = ["*"]
 
+    OLLAMA_BASE_URL: str = "http://ollama:11434"
+    OLLAMA_DEFAULT_MODEL: str = "llama3.2"
 
     class Config:
         env_file = ".env"

@@ -1,5 +1,6 @@
 FastAPI
 uvicorn[standard]
+httpx
 websockets
 python-multipart
 boto3

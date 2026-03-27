@@ -12,6 +12,8 @@ services:
       - /app/node_modules
 
   worker:
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
     volumes:
       - ./worker/app:/app/app
     command: >
@@ -21,6 +23,20 @@ services:
         --recursive
         --
         celery -A app.celery_app.celery worker --loglevel=info
+
+  api:
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - project_network
 
   minio:
     environment:
@@ -141,3 +157,4 @@ volumes:
   prometheus_data:
   grafana_data:
   loki_data:
+  ollama_data:

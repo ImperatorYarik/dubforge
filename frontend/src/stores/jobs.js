@@ -11,6 +11,8 @@ export const useJobsStore = defineStore('jobs', () => {
   const recentJobs = ref([])
   const loading = ref(false)
   const error = ref(null)
+  // LLM translation pipeline phase: null | 'collecting_context' | 'awaiting_review' | 'translating' | 'ready'
+  const llmPhase = ref(null)
   let _ws = null
 
   function _loadHistory() {
@@ -88,11 +90,16 @@ export const useJobsStore = defineStore('jobs', () => {
     } catch {}
   }
 
+  function setLlmPhase(phase) {
+    llmPhase.value = phase
+  }
+
   function clearJob() {
     disconnectWS()
     activeJob.value = null
     loading.value = false
     error.value = null
+    llmPhase.value = null
   }
 
   // Legacy helpers used by existing ProjectDetailView
@@ -155,7 +162,9 @@ export const useJobsStore = defineStore('jobs', () => {
     recentJobs,
     loading,
     error,
+    llmPhase,
     startJob,
+    setLlmPhase,
     connectWS,
     disconnectWS,
     fetchStatus,
