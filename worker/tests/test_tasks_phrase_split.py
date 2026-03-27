@@ -37,16 +37,17 @@ class TestSplitIntoPhrases:
         assert result[0].text == "Hello world"
         assert result[1].text == "how are you"
 
-    def test_no_split_when_gap_exactly_at_threshold(self):
-        # Gap of exactly 400ms between words[1].end=1.0 and words[2].start=1.4
+    def test_single_word_phrase_from_gap_is_merged_back(self):
+        # Gap of exactly 400ms produces a split, but the resulting 1-word phrase
+        # ("there") is merged back into the preceding phrase by the merge step.
         seg = make_segment([
             ("Hello", 0.0, 0.5),
             ("world", 0.6, 1.0),
             ("there", 1.4, 1.8),
         ])
         result = split_into_phrases(seg, gap_ms=400)
-        # Gap = 0.4s = 400ms, condition is >= gap_s (0.4), so it splits
-        assert len(result) == 2
+        assert len(result) == 1
+        assert "there" in result[0].text
 
     def test_merges_single_word_phrase_into_preceding(self):
         seg = make_segment([

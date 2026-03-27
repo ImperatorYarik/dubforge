@@ -52,7 +52,7 @@ class TestTranscribePipelineExecute:
             mock_audio_repo.save_separation.return_value = ("http://s3/v.wav", "http://s3/nv.wav")
             mock_transcript_repo.save_transcription.return_value = "http://s3/transcript.txt"
 
-            result = pipeline.execute(ctx, translate=True, progress=progress)
+            result = pipeline.execute(ctx, True, progress)
 
         assert isinstance(result, TranscribeJobResult)
         assert result.status == "completed"
@@ -71,12 +71,12 @@ class TestTranscribePipelineExecute:
             mock_audio_repo.download_cached_separation.return_value = MOCK_SEPARATION
             mock_transcript_repo.save_transcription.return_value = "http://s3/t.txt"
 
-            pipeline.execute(ctx, translate=True, progress=progress)
+            pipeline.execute(ctx, True, progress)
 
         mock_dl.assert_not_called()
         mock_separate.assert_not_called()
 
-    def test_skip_demucs_uses_full_audio(self, pipeline, ctx, progress):
+    def test_skip_demucs_extracts_audio_without_separation(self, pipeline, ctx, progress):
         with (
             patch("app.pipelines.transcribe_pipeline.audio_repository") as mock_audio_repo,
             patch("app.pipelines.transcribe_pipeline.download_file_to_disk", return_value=True),
@@ -89,12 +89,12 @@ class TestTranscribePipelineExecute:
             mock_audio_repo.download_cached_separation.return_value = None
             mock_transcript_repo.save_transcription.return_value = "http://s3/t.txt"
 
-            pipeline.execute(ctx, translate=True, progress=progress, skip_demucs=True)
+            pipeline.execute(ctx, True, progress, skip_demucs=True)
 
         mock_separate.assert_not_called()
         mock_extract.assert_called_once()
 
-    def test_demucs_separation_when_not_skipped(self, pipeline, ctx, progress):
+    def test_demucs_called_when_not_skipped(self, pipeline, ctx, progress):
         with (
             patch("app.pipelines.transcribe_pipeline.audio_repository") as mock_audio_repo,
             patch("app.pipelines.transcribe_pipeline.download_file_to_disk", return_value=True),
@@ -108,7 +108,7 @@ class TestTranscribePipelineExecute:
             mock_audio_repo.save_separation.return_value = ("http://s3/v.wav", "http://s3/nv.wav")
             mock_transcript_repo.save_transcription.return_value = "http://s3/t.txt"
 
-            pipeline.execute(ctx, translate=True, progress=progress, skip_demucs=False)
+            pipeline.execute(ctx, True, progress, skip_demucs=False)
 
         mock_separate.assert_called_once()
         mock_extract.assert_not_called()
@@ -122,9 +122,9 @@ class TestTranscribePipelineExecute:
             mock_audio_repo.download_cached_separation.return_value = None
 
             with pytest.raises(RuntimeError, match="Download failed"):
-                pipeline.execute(ctx, translate=True, progress=progress)
+                pipeline.execute(ctx, True, progress)
 
-    def test_saves_transcription_after_transcribe(self, pipeline, ctx, progress):
+    def test_calls_transcript_repository_save(self, pipeline, ctx, progress):
         with (
             patch("app.pipelines.transcribe_pipeline.audio_repository") as mock_audio_repo,
             patch("app.pipelines.transcribe_pipeline.download_file_to_disk", return_value=True),
@@ -137,12 +137,12 @@ class TestTranscribePipelineExecute:
             mock_audio_repo.save_separation.return_value = ("http://s3/v.wav", "http://s3/nv.wav")
             mock_transcript_repo.save_transcription.return_value = "http://s3/t.txt"
 
-            pipeline.execute(ctx, translate=True, progress=progress)
+            pipeline.execute(ctx, True, progress)
 
         mock_transcript_repo.save_transcription.assert_called_once()
-        call_kwargs = mock_transcript_repo.save_transcription.call_args
-        assert call_kwargs[0][0] == "vid1"
-        assert call_kwargs[0][1] == "proj1"
+        args = mock_transcript_repo.save_transcription.call_args[0]
+        assert args[0] == "vid1"
+        assert args[1] == "proj1"
 
     def test_passes_model_name_to_transcribe_audio(self, pipeline, ctx, progress):
         with (
@@ -157,7 +157,7 @@ class TestTranscribePipelineExecute:
             mock_audio_repo.save_separation.return_value = ("http://s3/v.wav", "http://s3/nv.wav")
             mock_transcript_repo.save_transcription.return_value = "http://s3/t.txt"
 
-            pipeline.execute(ctx, translate=True, progress=progress, model="large-v2")
+            pipeline.execute(ctx, True, progress, model="large-v2")
 
         _, kwargs = mock_transcribe.call_args
         assert kwargs.get("model_name") == "large-v2"
@@ -175,7 +175,7 @@ class TestTranscribePipelineExecute:
             mock_audio_repo.save_separation.return_value = ("http://s3/v.wav", "http://s3/nv.wav")
             mock_transcript_repo.save_transcription.return_value = "http://s3/t.txt"
 
-            pipeline.execute(ctx, translate=False, progress=progress, language="es")
+            pipeline.execute(ctx, False, progress, language="es")
 
         _, kwargs = mock_transcribe.call_args
         assert kwargs.get("language") == "es"

@@ -4,3 +4,4 @@ radon
 pytest
 pytest-asyncio
 anyio
+httpx

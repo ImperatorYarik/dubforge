@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -19,8 +20,9 @@ async def create_project(youtube_url: str, download_from_youtube: bool = True):
     storage.create_folder(project_id)
 
     if download_from_youtube:
-        local_path = f"/tmp/{project_id}/video.mp4"
-        os.makedirs(f"/tmp/{project_id}", exist_ok=True)
+        tmp_dir = os.path.join(tempfile.gettempdir(), project_id)
+        local_path = os.path.join(tmp_dir, "video.mp4")
+        os.makedirs(tmp_dir, exist_ok=True)
         success = await download_youtube_video(youtube_url, local_path)
         if not success:
             raise RuntimeError("Failed to download YouTube video")
