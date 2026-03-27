@@ -8,13 +8,12 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.config import settings
 from app.core.celery import celery
 from app.repositories import videos as videos_repo
-from app.services.jobs import enrich_result, register_job
+from app.services.jobs import enrich_result, persist_job_result, register_job
 
 router = APIRouter()
 
 VALID_MODELS = {"tiny", "base", "small", "medium", "large-v2", "large-v3"}
 
-# sOMETHING
 @router.post("/dub")
 async def dub_video(
     project_id: str,
@@ -35,6 +34,12 @@ async def dub_video(
         "app.pipelines.dubbing_pipeline.dub_video",
         args=[project_id, video_id, video["video_url"]],
         kwargs={
+            "vocals_url": video.get("vocals_url"),
+            "no_vocals_url": video.get("no_vocals_url"),
+            "existing_transcription": video.get("transcription") if skip_transcription else None,
+            "existing_segments": video.get("transcript_segments") if skip_transcription else None,
+            "existing_detected_language": video.get("detected_language") if skip_transcription else None,
+            "existing_duration_seconds": video.get("duration_seconds") if skip_transcription else None,
             "skip_transcription": skip_transcription,
             "ducking_enabled": ducking_enabled,
             "ducking_level": ducking_level,
@@ -77,6 +82,8 @@ async def transcribe_video(
         "app.pipelines.transcribe_pipeline.transcribe_video",
         args=[project_id, video_id, video["video_url"]],
         kwargs={
+            "vocals_url": video.get("vocals_url"),
+            "no_vocals_url": video.get("no_vocals_url"),
             "translate": translate,
             "model": model,
             "skip_demucs": skip_demucs,
@@ -119,6 +126,7 @@ async def get_job_status(task_id: str):
     result = AsyncResult(task_id, app=celery)
     if result.state == "SUCCESS":
         raw = result.result or {}
+        await persist_job_result(raw)
         enriched = await enrich_result(raw)
         return {
             "task_id": task_id,

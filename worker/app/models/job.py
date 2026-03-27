@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -16,12 +18,21 @@ class DubJobResult(BaseModel):
     vocals_url: str
     no_vocals_url: str
     video_id: str
+    job_id: str
+    transcription: Optional[str] = None
+    transcript_segments: Optional[list[dict]] = None
+    detected_language: Optional[str] = None
+    duration_seconds: Optional[float] = None
 
 
 class TranscribeJobResult(BaseModel):
     status: str
     video_id: str
     transcript_url: str
+    transcription: Optional[str] = None
+    transcript_segments: Optional[list[dict]] = None
+    detected_language: Optional[str] = None
+    duration_seconds: Optional[float] = None
 
 
 class TtsJobResult(BaseModel):

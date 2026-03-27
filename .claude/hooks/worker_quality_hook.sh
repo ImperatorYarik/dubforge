@@ -1,14 +1,14 @@
 #!/bin/bash
-# PostToolUse hook — quality checks for api/ Python files.
+# PostToolUse hook — quality checks for worker/ Python files.
 # Runs: Pylint (lint), Bandit (security), Radon (complexity), Pytest (unit tests).
-# Triggers only when a .py file inside api/ is written or edited.
+# Triggers only when a .py file inside worker/ is written or edited.
 
 INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 
-# Only trigger for Python files under api/
+# Only trigger for Python files under worker/
 case "$FILE_PATH" in
-    */api/*.py) ;;
+    */worker/*.py) ;;
     *) exit 0 ;;
 esac
 

@@ -34,9 +34,26 @@ class TestDubJobResult:
             vocals_url="http://s3/vocals.wav",
             no_vocals_url="http://s3/no_vocals.wav",
             video_id="v1",
+            job_id="j1",
         )
         assert result.status == "completed"
         assert result.video_id == "v1"
+        assert result.job_id == "j1"
+
+    def test_optional_transcription_fields_default_to_none(self):
+        result = DubJobResult(
+            status="completed",
+            dubbed_url="http://s3/dubbed.mp4",
+            transcript_url="http://s3/transcript.txt",
+            vocals_url="http://s3/vocals.wav",
+            no_vocals_url="http://s3/no_vocals.wav",
+            video_id="v1",
+            job_id="j1",
+        )
+        assert result.transcription is None
+        assert result.transcript_segments is None
+        assert result.detected_language is None
+        assert result.duration_seconds is None
 
     def test_missing_required_field_raises(self):
         with pytest.raises(ValidationError):

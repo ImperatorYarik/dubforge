@@ -298,17 +298,17 @@ cd frontend && npm install && npm run dev
 
 **Dubbing:**
 1. Frontend uploads video → `POST /videos/upload` → stored in MinIO, recorded in MongoDB
-2. `POST /jobs/dub?project_id=X&video_id=Y` → Celery task enqueued via Redis
+2. `POST /jobs/dub?project_id=X&video_id=Y` → API fetches cached `vocals_url`, `no_vocals_url`, and existing transcription from MongoDB, then enqueues Celery task with all data as kwargs
 3. Worker runs `dubbing_pipeline.dub_video` task; progress published to Redis pub/sub channel `job:{task_id}`
 4. Frontend WebSocket connects to `WS /jobs/{task_id}/progress` → streams `{step, pct, message}`
-5. On completion, dubbed video + transcript uploaded to MinIO; URLs stored in MongoDB
-6. `GET /jobs/{task_id}/status` polls Celery `AsyncResult` for final state
+5. On completion, worker uploads dubbed video + transcript to MinIO and returns full result (URLs, transcription text, segments, language, duration) via Celery result object — **no MongoDB access in worker**
+6. `GET /jobs/{task_id}/status` polls Celery `AsyncResult`; on SUCCESS, API calls `persist_job_result()` to write to MongoDB (idempotent)
 
 **Re-dubbing (skip transcription):**
-- `POST /jobs/dub?skip_transcription=true` — reuses existing transcription from MongoDB, only re-synthesizes TTS
+- `POST /jobs/dub?skip_transcription=true` — API reads existing transcription + segments from MongoDB and passes them as kwargs; worker skips Demucs + Whisper
 
 **Standalone transcription:**
-- `POST /jobs/transcribe?project_id=X&video_id=Y` → runs Demucs + Whisper only, no TTS
+- `POST /jobs/transcribe?project_id=X&video_id=Y` → API passes cached vocals URLs as kwargs; runs Demucs + Whisper only, no TTS
 
 **Text-to-speech:**
 - `POST /tts/generate` → synthesizes text using a built-in XTTS speaker (34 voices available)
@@ -323,7 +323,9 @@ cd frontend && npm install && npm run dev
 - **Speaker reference from longest segments**: Voice reference WAV for XTTS is built by concatenating the longest speech segments until ≥8 seconds. Stereo is downmixed to mono before XTTS (which expects mono input).
 - **Atempo stretch clamping**: TTS clips are time-stretched to match segment duration, but the ratio is clamped to [0.75, 1.5] to prevent unintelligible audio. Clips are hard-trimmed with a 50ms fade-out to prevent bleed.
 - **Audio ducking**: Background track volume is ducked to a configurable level during speech segments and restored in silence.
-- **Vocal/background caching**: After first Demucs separation, vocals and no-vocals are uploaded to MinIO and their URLs stored in MongoDB. Subsequent re-dubs download these cached files instead of re-running Demucs.
+- **Single Responsibility — worker is compute-only**: The worker has no MongoDB access. It receives all pre-fetched data (cached vocals URLs, existing transcription/segments) as Celery task kwargs from the API, performs AI computation and S3 uploads, then returns the full result (URLs, transcription text, segments, language, duration, job_id) via the Celery result object.
+- **API owns all DB writes**: `GET /jobs/{task_id}/status` calls `persist_job_result()` on SUCCESS state, which idempotently writes to MongoDB (`$set` for fields, conditional `$push` for `dubbed_versions` keyed on `job_id` to prevent duplicates from repeated polling).
+- **Vocal/background caching**: After first Demucs separation, worker uploads vocals and no-vocals to MinIO and returns their URLs in the result. API persists them to MongoDB. Subsequent re-dubs pass the cached URLs as kwargs — worker downloads directly from MinIO without re-running Demucs.
 
 ### Directory Layout
 
@@ -336,9 +338,11 @@ api/app/
     projects.py        # CRUD for projects (YouTube download via yt-dlp)
     jobs.py            # POST /jobs/dub, POST /jobs/transcribe, GET /{id}/status, WS /{id}/progress
     tts.py             # GET /tts/voices, POST /tts/generate, GET /tts/{id}/status
-  CRUD/
-    videos.py          # motor async MongoDB access
+  repositories/
+    videos.py          # motor async MongoDB access; update_video_after_dub / update_video_after_transcribe
     projects.py
+  services/
+    jobs.py            # persist_job_result (DB write on SUCCESS), enrich_result (presigned URLs), register_job (Redis)
   models/              # Pydantic request/response schemas
     job.py
     project.py
@@ -352,8 +356,7 @@ api/app/
 worker/app/
   celery_app.py        # Celery instance; pre-loads Whisper on worker init
   config.py            # Worker pydantic-settings config
-  database.py          # MongoDB connection
-  storage.py           # MinIO storage client
+  storage.py           # MinIO storage client (no MongoDB — worker is compute-only)
   models/              # Structured data models
     audio.py           # Audio data model
     job.py             # Job model
