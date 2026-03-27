@@ -39,7 +39,7 @@ jobs:
             boto3 pymongo soundfile watchdog
 
       - name: pylint
-        run: pylint app --fail-under=7.0
+        run: pylint app --rcfile=.pylintrc --fail-under=7.0
 
       - name: bandit (security scan)
         run: bandit -r app -ll
@@ -62,26 +62,17 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            worker/requirements.txt
-            worker/requirements-dev.txt
-
-      - name: Install system dependencies
-        run: sudo apt-get install -y ffmpeg
+          cache-dependency-path: worker/requirements-dev.txt
 
       - name: Install dependencies
+        # GPU/ML packages (faster-whisper, TTS, demucs, torch) require CUDA and
+        # cannot be installed in CI. All subprocess and GPU calls are mocked in
+        # the test suite, so only the non-GPU runtime packages are needed.
         run: |
-          pip install -r requirements.txt
           pip install -r requirements-dev.txt
+          pip install \
+            celery redis pydantic-settings pydantic \
+            boto3 pymongo soundfile watchdog ffmpeg-python
 
       - name: pytest
         run: pytest --tb=short -q
-        env:
-          MONGO_URI: mongodb://localhost:27017
-          REDIS_URL: redis://localhost:6379/0
-          S3_ENDPOINT: http://localhost:9000
-          S3_PUBLIC_ENDPOINT: http://localhost:9000
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
-          S3_BUCKET: test-bucket
-          COQUI_TOS_AGREED: "1"
