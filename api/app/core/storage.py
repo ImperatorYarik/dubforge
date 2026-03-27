@@ -57,6 +57,14 @@ class Storage:
         )
 
     @staticmethod
+    def object_exists(object_name: str) -> bool:
+        try:
+            _client.head_object(Bucket=settings.BUCKET_NAME, Key=object_name)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
     def delete_object(object_name: str) -> bool:
         try:
             _client.delete_object(Bucket=settings.BUCKET_NAME, Key=object_name)

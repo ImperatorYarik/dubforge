@@ -1,5 +1,6 @@
 import json
 from typing import Optional
+from urllib.parse import urlparse
 
 import redis.asyncio as aioredis
 from celery.result import AsyncResult
@@ -7,8 +8,15 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.config import settings
 from app.core.celery import celery
+from app.core.storage import storage
 from app.repositories import videos as videos_repo
 from app.services.jobs import enrich_result, persist_job_result, register_job
+
+
+def _object_key_from_url(url: str) -> str:
+    parsed = urlparse(url)
+    parts = parsed.path.lstrip("/").split("/", 1)
+    return parts[1] if len(parts) == 2 else ""
 
 router = APIRouter()
 
@@ -27,6 +35,8 @@ async def dub_video(
     video = await videos_repo.get_video(video_id)
     if not video:
         return {"error": "Video not found"}
+    if not storage.object_exists(_object_key_from_url(video["video_url"])):
+        return {"error": "Source video file not found in storage. Please re-upload the video."}
     ducking_level = max(0.0, min(1.0, ducking_level))
     atempo_min = max(0.5, min(0.95, atempo_min))
     atempo_max = max(1.05, min(2.0, atempo_max))
@@ -56,6 +66,8 @@ async def separate_audio(project_id: str, video_id: str):
     video = await videos_repo.get_video(video_id)
     if not video:
         return {"error": "Video not found"}
+    if not storage.object_exists(_object_key_from_url(video["video_url"])):
+        return {"error": "Source video file not found in storage. Please re-upload the video."}
     task = celery.send_task(
         "app.pipelines.demucs_pipeline.separate_audio",
         args=[project_id, video_id, video["video_url"]],
@@ -78,6 +90,8 @@ async def transcribe_video(
     video = await videos_repo.get_video(video_id)
     if not video:
         return {"error": "Video not found"}
+    if not storage.object_exists(_object_key_from_url(video["video_url"])):
+        return {"error": "Source video file not found in storage. Please re-upload the video."}
     task = celery.send_task(
         "app.pipelines.transcribe_pipeline.transcribe_video",
         args=[project_id, video_id, video["video_url"]],

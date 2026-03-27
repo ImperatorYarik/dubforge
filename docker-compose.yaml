@@ -9,7 +9,7 @@ services:
     networks:
       - project_network
 
-  api: 
+  api:
     build: ./api
     container_name: video-trans-api
     command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -17,14 +17,8 @@ services:
       - ./api:/app
     ports:
       - "8000:8000"
-    environment:
-     - MONGO_URI=${MONGO_URI}
-     - S3_ENDPOINT=${S3_ENDPOINT}
-     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-     - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-     - REDIS_URL=${REDIS_URL}
-
+    env_file:
+      - .env
     networks:
       - project_network
 
@@ -49,15 +43,10 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    env_file:
+      - .env
     environment:
-     - HF_TOKEN=${HF_TOKEN} # Hugging Face token to download models faster
-     - MONGO_URI=${MONGO_URI}
-     - S3_ENDPOINT=${S3_ENDPOINT}
-     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-     - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-     - REDIS_URL=${REDIS_URL}
-     - COQUI_TOS_AGREED=1 # Agree to TOS for Coqui TTS models
+      - COQUI_TOS_AGREED=1
     depends_on:
       - redis
     networks:

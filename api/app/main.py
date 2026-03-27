@@ -3,12 +3,15 @@ import traceback
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.config import settings
 from app.core.storage import storage
 from app.routers import jobs, projects, system, tts, videos
 
 app = FastAPI()
+
+Instrumentator().instrument(app).expose(app)
 
 app.add_middleware(
     CORSMiddleware,
