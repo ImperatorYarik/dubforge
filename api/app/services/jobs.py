@@ -48,22 +48,27 @@ def rewrite_url(internal_url: str) -> Optional[str]:
         return internal_url
 
 
+async def persist_job_result(raw: dict) -> None:
+    """Persist completed job results to MongoDB. Idempotent — safe to call multiple times."""
+    video_id = raw.get("video_id")
+    if not video_id:
+        return  # TTS job — no video document to update
+
+    if raw.get("dubbed_url"):
+        await videos_repo.update_video_after_dub(video_id, raw)
+    elif raw.get("transcript_url"):
+        await videos_repo.update_video_after_transcribe(video_id, raw)
+
+
 async def enrich_result(raw: dict) -> dict:
-    """Add presigned URLs and structured transcript data to a job result."""
+    """Rewrite S3 URLs to presigned public URLs and attach segment count."""
     enriched = dict(raw)
 
-    for url_field in ("dubbed_url", "transcript_url", "vocals_url", "no_vocals_url"):
+    for url_field in ("dubbed_url", "transcript_url", "vocals_url", "no_vocals_url", "audio_url"):
         if raw.get(url_field):
             enriched[url_field] = rewrite_url(raw[url_field])
 
-    video_id = raw.get("video_id")
-    if video_id:
-        video = await videos_repo.get_video(video_id)
-        if video:
-            enriched["transcription"] = video.get("transcription")
-            enriched["transcript_segments"] = video.get("transcript_segments") or []
-            enriched["detected_language"] = video.get("detected_language")
-            enriched["duration_seconds"] = video.get("duration_seconds")
-            enriched["segment_count"] = len(enriched["transcript_segments"])
+    if raw.get("transcript_segments") is not None:
+        enriched["segment_count"] = len(raw["transcript_segments"])
 
     return enriched

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 
 from app.core.database import videos_collection
 
@@ -55,6 +56,59 @@ async def get_dubbed_version(video_id: str, job_id: str) -> dict | None:
         if v["job_id"] == job_id:
             return v
     return None
+
+
+async def update_video_after_dub(video_id: str, result: dict) -> None:
+    """Persist dubbing job results to MongoDB. Idempotent."""
+    update_fields = {
+        "dubbed_url": result["dubbed_url"],
+        "vocals_url": result.get("vocals_url"),
+        "no_vocals_url": result.get("no_vocals_url"),
+        "transcript_url": result.get("transcript_url"),
+        "transcription": result.get("transcription"),
+        "transcript_segments": result.get("transcript_segments"),
+        "updated_at": datetime.now(),
+    }
+    if result.get("detected_language"):
+        update_fields["detected_language"] = result["detected_language"]
+    if result.get("duration_seconds") is not None:
+        update_fields["duration_seconds"] = result["duration_seconds"]
+
+    await videos_collection.update_one(
+        {"video_id": video_id},
+        {"$set": update_fields},
+    )
+    # Add to dubbed_versions only if this job_id is not already present
+    await videos_collection.update_one(
+        {
+            "video_id": video_id,
+            "dubbed_versions": {"$not": {"$elemMatch": {"job_id": result["job_id"]}}},
+        },
+        {"$push": {"dubbed_versions": {
+            "job_id": result["job_id"],
+            "url": result["dubbed_url"],
+            "created_at": datetime.now(),
+        }}},
+    )
+
+
+async def update_video_after_transcribe(video_id: str, result: dict) -> None:
+    """Persist transcription job results to MongoDB. Idempotent."""
+    update_fields = {
+        "transcript_url": result["transcript_url"],
+        "transcription": result.get("transcription"),
+        "transcript_segments": result.get("transcript_segments"),
+        "updated_at": datetime.now(),
+    }
+    if result.get("detected_language"):
+        update_fields["detected_language"] = result["detected_language"]
+    if result.get("duration_seconds") is not None:
+        update_fields["duration_seconds"] = result["duration_seconds"]
+
+    await videos_collection.update_one(
+        {"video_id": video_id},
+        {"$set": update_fields},
+    )
 
 
 async def delete_dubbed_version(video_id: str, job_id: str) -> dict | None:

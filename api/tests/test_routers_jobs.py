@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, call
 
 
 MOCK_VIDEO = {
@@ -65,6 +65,61 @@ class TestDubVideo:
 
         call_kwargs = mock_celery.send_task.call_args[1]["kwargs"]
         assert call_kwargs["skip_transcription"] is True
+
+    def test_vocals_url_passed_to_task(self, client):
+        video_with_vocals = {
+            **MOCK_VIDEO,
+            "vocals_url": "http://s3/vocals.wav",
+            "no_vocals_url": "http://s3/no_vocals.wav",
+        }
+        with (
+            patch("app.routers.jobs.videos_repo") as mock_videos,
+            patch("app.routers.jobs.celery") as mock_celery,
+        ):
+            mock_videos.get_video = AsyncMock(return_value=video_with_vocals)
+            mock_task = MagicMock()
+            mock_task.id = "task-vocals"
+            mock_celery.send_task.return_value = mock_task
+
+            client.post("/jobs/dub?project_id=proj-1&video_id=vid-1")
+
+        call_kwargs = mock_celery.send_task.call_args[1]["kwargs"]
+        assert call_kwargs["vocals_url"] == "http://s3/vocals.wav"
+        assert call_kwargs["no_vocals_url"] == "http://s3/no_vocals.wav"
+
+    def test_skip_transcription_passes_existing_data(self, client):
+        with (
+            patch("app.routers.jobs.videos_repo") as mock_videos,
+            patch("app.routers.jobs.celery") as mock_celery,
+        ):
+            mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
+            mock_task = MagicMock()
+            mock_task.id = "task-skip"
+            mock_celery.send_task.return_value = mock_task
+
+            client.post("/jobs/dub?project_id=proj-1&video_id=vid-1&skip_transcription=true")
+
+        call_kwargs = mock_celery.send_task.call_args[1]["kwargs"]
+        assert call_kwargs["existing_transcription"] == MOCK_VIDEO["transcription"]
+        assert call_kwargs["existing_segments"] == MOCK_VIDEO["transcript_segments"]
+        assert call_kwargs["existing_detected_language"] == MOCK_VIDEO["detected_language"]
+        assert call_kwargs["existing_duration_seconds"] == MOCK_VIDEO["duration_seconds"]
+
+    def test_no_transcription_when_skip_false(self, client):
+        with (
+            patch("app.routers.jobs.videos_repo") as mock_videos,
+            patch("app.routers.jobs.celery") as mock_celery,
+        ):
+            mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
+            mock_task = MagicMock()
+            mock_task.id = "task-noskip"
+            mock_celery.send_task.return_value = mock_task
+
+            client.post("/jobs/dub?project_id=proj-1&video_id=vid-1&skip_transcription=false")
+
+        call_kwargs = mock_celery.send_task.call_args[1]["kwargs"]
+        assert call_kwargs["existing_transcription"] is None
+        assert call_kwargs["existing_segments"] is None
 
     def test_ducking_params_passed(self, client):
         with (
@@ -232,6 +287,27 @@ class TestTranscribeVideo:
         call_kwargs = mock_celery.send_task.call_args[1]["kwargs"]
         assert call_kwargs["translate"] is False
 
+    def test_vocals_url_passed_to_task(self, client):
+        video_with_vocals = {
+            **MOCK_VIDEO,
+            "vocals_url": "http://s3/vocals.wav",
+            "no_vocals_url": "http://s3/no_vocals.wav",
+        }
+        with (
+            patch("app.routers.jobs.videos_repo") as mock_videos,
+            patch("app.routers.jobs.celery") as mock_celery,
+        ):
+            mock_videos.get_video = AsyncMock(return_value=video_with_vocals)
+            mock_task = MagicMock()
+            mock_task.id = "task-tr-vocals"
+            mock_celery.send_task.return_value = mock_task
+
+            client.post("/jobs/transcribe?project_id=proj-1&video_id=vid-1")
+
+        call_kwargs = mock_celery.send_task.call_args[1]["kwargs"]
+        assert call_kwargs["vocals_url"] == "http://s3/vocals.wav"
+        assert call_kwargs["no_vocals_url"] == "http://s3/no_vocals.wav"
+
 
 class TestGetJobStatus:
     def test_success_returns_enriched_shape(self, client):
@@ -241,14 +317,14 @@ class TestGetJobStatus:
             "status": "completed",
             "dubbed_url": "http://minio:9000/video-bucket/proj-1/dubbed.mp4",
             "video_id": "vid-1234",
+            "job_id": "job-1",
         }
 
         with (
             patch("app.routers.jobs.AsyncResult", return_value=mock_result),
-            patch("app.services.jobs.videos_repo") as mock_videos,
+            patch("app.routers.jobs.persist_job_result", new=AsyncMock()),
             patch("app.services.jobs.storage") as mock_storage,
         ):
-            mock_videos.get_video = AsyncMock(return_value=MOCK_VIDEO)
             mock_storage.generate_presigned_url.return_value = (
                 "http://minio:9000/video-bucket/proj-1/dubbed.mp4?sig=abc"
             )
@@ -262,6 +338,26 @@ class TestGetJobStatus:
         assert data["status"] == "completed"
         assert data["pct"] == 100
         assert "result" in data
+
+    def test_success_calls_persist_job_result(self, client):
+        mock_result = MagicMock()
+        mock_result.state = "SUCCESS"
+        mock_result.result = {
+            "status": "completed",
+            "dubbed_url": "http://s3/dubbed.mp4",
+            "video_id": "vid-1234",
+            "job_id": "job-1",
+        }
+
+        with (
+            patch("app.routers.jobs.AsyncResult", return_value=mock_result),
+            patch("app.routers.jobs.persist_job_result", new=AsyncMock()) as mock_persist,
+            patch("app.services.jobs.storage") as mock_storage,
+        ):
+            mock_storage.generate_presigned_url.return_value = "http://s3/dubbed.mp4?sig=x"
+            client.get("/jobs/task-persist/status")
+
+        mock_persist.assert_called_once_with(mock_result.result)
 
     def test_failure_returns_error_field(self, client):
         mock_result = MagicMock()

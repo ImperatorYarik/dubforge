@@ -130,7 +130,8 @@ Input video
            ▼
 ┌─────────────────────┐
 │  8. Mux + upload    │  ffmpeg stream-copy video + dubbed audio
-│                     │  → MinIO, URLs saved to MongoDB
+│                     │  → MinIO; full result returned via Celery
+│                     │  API writes to MongoDB on GET /status poll
 └─────────────────────┘
 ```
 
@@ -141,17 +142,21 @@ Input video
 Frontend ──POST /videos/upload──▶ API ──▶ MinIO (store video)
                                       └──▶ MongoDB (record video)
 
-Frontend ──POST /jobs/dub──▶ API ──▶ Redis (enqueue Celery task)
+Frontend ──POST /jobs/dub──▶ API ──reads──▶ MongoDB (vocals_url, existing transcription)
+                                 └──▶ Redis (enqueue task with cached data as kwargs)
                                  └──▶ returns { task_id }
 
 Frontend ──WS /jobs/{id}/progress──▶ API ──▶ Redis sub (stream events)
                                          ──▶ Browser progress bar
 
 Worker ──publishes──▶ Redis pub/sub channel job:{task_id}
-       ──uploads────▶ MinIO (dubbed video, transcript)
-       ──writes─────▶ MongoDB (dubbed_url, transcript_url)
+       ──uploads────▶ MinIO (dubbed video, transcript, vocals if new)
+       ──returns────▶ Celery result (URLs + transcription + segments + language)
+       (no MongoDB access)
 
 Frontend ──GET /jobs/{id}/status──▶ API ──▶ Celery AsyncResult
+                                       └── on SUCCESS ──▶ MongoDB (persist_job_result, idempotent)
+                                                      └──▶ returns enriched result with presigned URLs
 ```
 
 ---
@@ -420,6 +425,7 @@ MinIO bucket structure:
 | Task queue | Celery + Redis (solo pool) | CUDA is not fork-safe; solo pool ensures one task at a time |
 | Progress streaming | Redis pub/sub + WebSocket | Real-time; late-joining clients get cached latest state via `SETEX` |
 | Storage | MinIO (S3-compatible) | Local S3; presigned URLs enable direct browser playback |
+| Worker responsibility | Compute + S3 uploads only | No MongoDB in worker — API resolves cached data before enqueueing and persists results on `GET /status` (idempotent `$set` + conditional `$push`) |
 | Frontend state | Pinia | Vue 3 idiomatic; simpler than Vuex |
 
 ---
@@ -440,9 +446,11 @@ video-trans/
 │       │   ├── projects.py          # CRUD + YouTube import
 │       │   ├── jobs.py              # dub, transcribe, status, WebSocket
 │       │   └── tts.py               # voices, generate, status
-│       ├── CRUD/
-│       │   ├── videos.py            # Motor async DB access
+│       ├── repositories/
+│       │   ├── videos.py            # Motor async DB access; update_video_after_dub/transcribe
 │       │   └── projects.py
+│       ├── services/
+│       │   └── jobs.py              # persist_job_result, enrich_result, register_job
 │       ├── models/                  # Pydantic request/response schemas
 │       └── utils/
 │           ├── storage.py           # MinIO wrapper (boto3)
@@ -450,7 +458,7 @@ video-trans/
 │           ├── database.py          # Motor MongoDB client
 │           └── youtube_metadata.py
 │
-├── worker/                          # Celery background worker (CUDA)
+├── worker/                          # Celery background worker (CUDA) — compute + S3 only, no MongoDB
 │   └── app/
 │       ├── celery_app.py            # Celery instance; Whisper pre-loaded on init
 │       ├── config.py

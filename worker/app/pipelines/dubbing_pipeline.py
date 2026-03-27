@@ -1,14 +1,12 @@
 import uuid
 import logging
 import subprocess
-from datetime import datetime
 from typing import Optional
 
 import redis as sync_redis
 
 from app.config import settings
 from app.celery_app import celery
-from app.database import videos_collection
 from app.models.audio import SeparationResult, VoiceReferenceResult
 from app.models.job import JobContext, DubJobResult
 from app.models.segment import TranscriptSegment
@@ -39,6 +37,12 @@ class DubbingPipeline(BasePipeline):
         ctx: JobContext,
         progress: ProgressPublisher,
         skip_transcription: bool,
+        vocals_url: Optional[str] = None,
+        no_vocals_url: Optional[str] = None,
+        existing_transcription: Optional[str] = None,
+        existing_segments: Optional[list[dict]] = None,
+        existing_detected_language: Optional[str] = None,
+        existing_duration_seconds: Optional[float] = None,
         ducking_enabled: bool = True,
         ducking_level: float = 0.3,
         atempo_min: float = None,
@@ -56,10 +60,14 @@ class DubbingPipeline(BasePipeline):
         progress.update("video_dub", 5, "Download complete")
 
         progress.update("video_dub", 10, "Separating vocals from background (Demucs)…")
-        separation = self._ensure_vocals(ctx, src_path, progress)
+        separation, vocals_url, no_vocals_url = self._ensure_vocals(
+            ctx, src_path, progress, vocals_url, no_vocals_url
+        )
 
         segments, detected_language, duration_seconds, transcript_path = self._ensure_transcription(
-            ctx, separation, skip_transcription, progress
+            ctx, separation, skip_transcription, progress,
+            existing_transcription, existing_segments,
+            existing_detected_language, existing_duration_seconds,
         )
 
         ref = extract_reference_wav(
@@ -79,7 +87,7 @@ class DubbingPipeline(BasePipeline):
 
         progress.update("video_dub", 95, "Uploading results…")
         return self._upload_and_persist(
-            ctx, dubbed_video, transcript_path, separation, ext,
+            ctx, dubbed_video, transcript_path, vocals_url, no_vocals_url, ext,
             detected_language, duration_seconds, segments
         )
 
@@ -90,19 +98,26 @@ class DubbingPipeline(BasePipeline):
         return src_path
 
     def _ensure_vocals(
-        self, ctx: JobContext, src_path: str, progress: ProgressPublisher
-    ) -> SeparationResult:
-        cached = audio_repository.download_cached_separation(ctx.video_id, ctx.tmp_dir)
+        self,
+        ctx: JobContext,
+        src_path: str,
+        progress: ProgressPublisher,
+        vocals_url: Optional[str],
+        no_vocals_url: Optional[str],
+    ) -> tuple[SeparationResult, str, str]:
+        cached = audio_repository.download_cached_separation(vocals_url, no_vocals_url, ctx.tmp_dir)
         if cached:
             progress.update("video_dub", 8, "Downloading previously extracted audio…")
             progress.update("video_dub", 15, "Audio ready")
-            return cached
+            return cached, vocals_url, no_vocals_url
 
         result = separate_sources(src_path, ctx.tmp_dir)
         progress.update("video_dub", 18, "Uploading extracted audio…")
-        audio_repository.save_separation(ctx.video_id, ctx.project_id, ctx.job_id, result)
+        new_vocals_url, new_no_vocals_url = audio_repository.save_separation(
+            ctx.project_id, ctx.job_id, result
+        )
         progress.update("video_dub", 20, "Audio extraction complete")
-        return result
+        return result, new_vocals_url, new_no_vocals_url
 
     def _ensure_transcription(
         self,
@@ -110,27 +125,23 @@ class DubbingPipeline(BasePipeline):
         separation: SeparationResult,
         skip_transcription: bool,
         progress: ProgressPublisher,
+        existing_transcription: Optional[str],
+        existing_segments: Optional[list[dict]],
+        existing_detected_language: Optional[str],
+        existing_duration_seconds: Optional[float],
     ) -> tuple[list[TranscriptSegment], Optional[str], Optional[float], str]:
         transcript_path = f"{ctx.tmp_dir}/transcription.txt"
-        detected_language = None
-        duration_seconds = None
 
         if skip_transcription:
-            existing = transcript_repository.get_existing(ctx.video_id)
+            existing = transcript_repository.parse_existing(existing_segments, existing_transcription)
             if existing is None:
                 raise RuntimeError("No parseable segments in existing transcription")
             segments, transcription_text = existing
-            # Try to recover stored language/duration from MongoDB
-            from app.database import videos_collection as vc
-            video_doc = vc.find_one({"video_id": ctx.video_id})
-            if video_doc:
-                detected_language = video_doc.get("detected_language")
-                duration_seconds = video_doc.get("duration_seconds")
             progress.update("video_dub", 22, "Loading existing transcription…")
             with open(transcript_path, "w", encoding="utf-8") as f:
                 f.write(transcription_text)
             progress.update("video_dub", 50, "Transcription ready — loading TTS model…")
-            return segments, detected_language, duration_seconds, transcript_path
+            return segments, existing_detected_language, existing_duration_seconds, transcript_path
 
         progress.update("video_dub", 25, "Transcribing audio (Whisper)…")
         segments, detected_language, duration_seconds = transcribe_audio(
@@ -213,7 +224,8 @@ class DubbingPipeline(BasePipeline):
         ctx: JobContext,
         dubbed_video: str,
         transcript_path: str,
-        separation: SeparationResult,
+        vocals_url: str,
+        no_vocals_url: str,
         ext: str,
         detected_language: Optional[str],
         duration_seconds: Optional[float],
@@ -221,42 +233,9 @@ class DubbingPipeline(BasePipeline):
     ) -> DubJobResult:
         dubbed_url = upload_to_s3(dubbed_video, f"{ctx.project_id}/dubbed_{ctx.job_id}.{ext}")
         transcript_url = upload_to_s3(transcript_path, f"{ctx.project_id}/transcription_{ctx.job_id}.txt")
-        vocals_url = upload_to_s3(separation.vocals_path, f"{ctx.project_id}/vocals_{ctx.job_id}.wav")
-        no_vocals_url = upload_to_s3(separation.no_vocals_path, f"{ctx.project_id}/no_vocals_{ctx.job_id}.wav")
 
         with open(transcript_path, "r", encoding="utf-8") as f:
             transcription_text = f.read()
-
-        update_fields = {
-            "dubbed_url": dubbed_url,
-            "transcript_url": transcript_url,
-            "transcription": transcription_text,
-            "transcript_segments": [
-                {"start": s.start, "end": s.end, "text": s.text}
-                for s in segments
-            ],
-            "vocals_url": vocals_url,
-            "no_vocals_url": no_vocals_url,
-            "updated_at": datetime.now(),
-        }
-        if detected_language:
-            update_fields["detected_language"] = detected_language
-        if duration_seconds is not None:
-            update_fields["duration_seconds"] = duration_seconds
-
-        videos_collection.update_one(
-            {"video_id": ctx.video_id},
-            {
-                "$set": update_fields,
-                "$push": {
-                    "dubbed_versions": {
-                        "job_id": ctx.job_id,
-                        "url": dubbed_url,
-                        "created_at": datetime.now(),
-                    }
-                },
-            },
-        )
 
         return DubJobResult(
             status="completed",
@@ -265,6 +244,14 @@ class DubbingPipeline(BasePipeline):
             vocals_url=vocals_url,
             no_vocals_url=no_vocals_url,
             video_id=ctx.video_id,
+            job_id=ctx.job_id,
+            transcription=transcription_text,
+            transcript_segments=[
+                {"start": s.start, "end": s.end, "text": s.text}
+                for s in segments
+            ],
+            detected_language=detected_language,
+            duration_seconds=duration_seconds,
         )
 
 
@@ -274,6 +261,12 @@ def dub_video(
     project_id: str,
     video_id: str,
     input_url: str,
+    vocals_url: Optional[str] = None,
+    no_vocals_url: Optional[str] = None,
+    existing_transcription: Optional[str] = None,
+    existing_segments: Optional[list[dict]] = None,
+    existing_detected_language: Optional[str] = None,
+    existing_duration_seconds: Optional[float] = None,
     remove_original_audio: bool = True,
     skip_transcription: bool = False,
     ducking_enabled: bool = True,
@@ -289,6 +282,12 @@ def dub_video(
     try:
         result = self.execute(
             ctx, progress, skip_transcription,
+            vocals_url=vocals_url,
+            no_vocals_url=no_vocals_url,
+            existing_transcription=existing_transcription,
+            existing_segments=existing_segments,
+            existing_detected_language=existing_detected_language,
+            existing_duration_seconds=existing_duration_seconds,
             ducking_enabled=ducking_enabled,
             ducking_level=ducking_level,
             atempo_min=atempo_min,

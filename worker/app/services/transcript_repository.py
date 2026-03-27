@@ -1,9 +1,7 @@
 import re
 import logging
-from datetime import datetime
 from typing import Optional
 
-from app.database import videos_collection
 from app.models.segment import TranscriptSegment
 from app.tasks.upload import upload_to_s3
 
@@ -13,30 +11,26 @@ _SEGMENT_RE = re.compile(r"\[(\d+\.\d+)s - (\d+\.\d+)s\] (.+)")
 
 
 class TranscriptRepository:
-    def get_existing(
-        self, video_id: str
+    @staticmethod
+    def parse_existing(
+        transcript_segments: list[dict] | None,
+        transcription: str | None,
     ) -> tuple[list[TranscriptSegment], str] | None:
-        video_doc = videos_collection.find_one({"video_id": video_id})
-        if not video_doc:
-            return None
-
-        # Prefer structured segments if available
-        raw_segs = video_doc.get("transcript_segments")
-        if raw_segs:
+        """Parse transcription data passed in from the API (no DB access)."""
+        if transcript_segments:
             segments = [
                 TranscriptSegment(start=s["start"], end=s["end"], text=s["text"])
-                for s in raw_segs
+                for s in transcript_segments
             ]
-            text = video_doc.get("transcription", "")
+            text = transcription or ""
             return (segments, text) if segments else None
 
         # Fall back to parsing plain text
-        text = video_doc.get("transcription")
-        if not text:
+        if not transcription:
             return None
 
         segments = []
-        for line in text.split("\n"):
+        for line in transcription.split("\n"):
             m = _SEGMENT_RE.match(line.strip())
             if m:
                 segments.append(TranscriptSegment(
@@ -45,11 +39,10 @@ class TranscriptRepository:
                     text=m.group(3),
                 ))
 
-        return (segments, text) if segments else None
+        return (segments, transcription) if segments else None
 
     def save_transcription(
         self,
-        video_id: str,
         project_id: str,
         job_id: str,
         segments: list[TranscriptSegment],
@@ -57,32 +50,14 @@ class TranscriptRepository:
         detected_language: Optional[str] = None,
         duration_seconds: Optional[float] = None,
     ) -> str:
+        """Write transcription file, upload to S3, and return the URL.
+        DB persistence is the API's responsibility."""
         text = "".join(f"[{s.start:.2f}s - {s.end:.2f}s] {s.text}\n" for s in segments)
         output_path = f"{tmp_dir}/transcription.txt"
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(text)
 
-        transcript_url = upload_to_s3(output_path, f"{project_id}/transcription_{job_id}.txt")
-
-        update_fields = {
-            "transcription": text,
-            "transcript_url": transcript_url,
-            "transcript_segments": [
-                {"start": s.start, "end": s.end, "text": s.text}
-                for s in segments
-            ],
-            "updated_at": datetime.now(),
-        }
-        if detected_language:
-            update_fields["detected_language"] = detected_language
-        if duration_seconds is not None:
-            update_fields["duration_seconds"] = duration_seconds
-
-        videos_collection.update_one(
-            {"video_id": video_id},
-            {"$set": update_fields},
-        )
-        return transcript_url
+        return upload_to_s3(output_path, f"{project_id}/transcription_{job_id}.txt")
 
 
 transcript_repository = TranscriptRepository()

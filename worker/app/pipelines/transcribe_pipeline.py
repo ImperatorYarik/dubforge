@@ -34,13 +34,14 @@ class TranscribePipeline(BasePipeline):
         model: str = "large-v3",
         skip_demucs: bool = False,
         language: Optional[str] = None,
+        vocals_url: Optional[str] = None,
+        no_vocals_url: Optional[str] = None,
     ) -> TranscribeJobResult:
-        separation = self._ensure_vocals(ctx, progress, skip_demucs)
+        separation = self._ensure_vocals(ctx, progress, skip_demucs, vocals_url, no_vocals_url)
         segments, detected_language, duration_seconds = self._transcribe(
             ctx, separation, translate, progress, model, language
         )
         transcript_url = transcript_repository.save_transcription(
-            ctx.video_id,
             ctx.project_id,
             ctx.job_id,
             segments,
@@ -48,16 +49,30 @@ class TranscribePipeline(BasePipeline):
             detected_language=detected_language,
             duration_seconds=duration_seconds,
         )
+        transcription_text = "".join(
+            f"[{s.start:.2f}s - {s.end:.2f}s] {s.text}\n" for s in segments
+        )
         return TranscribeJobResult(
             status="completed",
             video_id=ctx.video_id,
             transcript_url=transcript_url,
+            transcription=transcription_text,
+            transcript_segments=[
+                {"start": s.start, "end": s.end, "text": s.text} for s in segments
+            ],
+            detected_language=detected_language,
+            duration_seconds=duration_seconds,
         )
 
     def _ensure_vocals(
-        self, ctx: JobContext, progress: ProgressPublisher, skip_demucs: bool
+        self,
+        ctx: JobContext,
+        progress: ProgressPublisher,
+        skip_demucs: bool,
+        vocals_url: Optional[str],
+        no_vocals_url: Optional[str],
     ) -> SeparationResult:
-        cached = audio_repository.download_cached_separation(ctx.video_id, ctx.tmp_dir)
+        cached = audio_repository.download_cached_separation(vocals_url, no_vocals_url, ctx.tmp_dir)
         if cached:
             progress.update("transcribe", 5, "Downloading extracted audio")
             progress.update("transcribe", 20, "Audio ready")
@@ -70,11 +85,9 @@ class TranscribePipeline(BasePipeline):
             raise RuntimeError("Download failed")
 
         if skip_demucs:
-            # Extract audio without Demucs separation
             progress.update("transcribe", 10, "Extracting audio (Demucs skipped)")
             audio_path = f"{ctx.tmp_dir}/audio.wav"
             _extract_audio(src_path, audio_path)
-            # Return a pseudo SeparationResult with vocals = full audio
             result = SeparationResult(vocals_path=audio_path, no_vocals_path=audio_path)
             progress.update("transcribe", 20, "Audio extraction complete")
             return result
@@ -83,7 +96,7 @@ class TranscribePipeline(BasePipeline):
         result = separate_sources(src_path, ctx.tmp_dir)
 
         progress.update("transcribe", 18, "Uploading extracted audio")
-        audio_repository.save_separation(ctx.video_id, ctx.project_id, ctx.job_id, result)
+        audio_repository.save_separation(ctx.project_id, ctx.job_id, result)
         progress.update("transcribe", 20, "Audio extraction complete")
         return result
 
@@ -117,6 +130,8 @@ def transcribe_video(
     model: str = "large-v3",
     skip_demucs: bool = False,
     language: Optional[str] = None,
+    vocals_url: Optional[str] = None,
+    no_vocals_url: Optional[str] = None,
 ):
     job_id = str(uuid.uuid4())
     tmp_dir = self._make_tmp(job_id)
@@ -124,7 +139,14 @@ def transcribe_video(
     logger.info(f"[transcribe:{job_id}] Starting. src={input_url}")
     progress = ProgressPublisher(_redis, self.request.id, settings.PROGRESS_TTL_SECONDS)
     try:
-        result = self.execute(ctx, translate, progress, model=model, skip_demucs=skip_demucs, language=language)
+        result = self.execute(
+            ctx, translate, progress,
+            model=model,
+            skip_demucs=skip_demucs,
+            language=language,
+            vocals_url=vocals_url,
+            no_vocals_url=no_vocals_url,
+        )
         self._cleanup_tmp(job_id)
         progress.update("transcribe", 100, "Done")
         logger.info(f"[transcribe:{job_id}] Done → {result.transcript_url}")
