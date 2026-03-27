@@ -16,7 +16,17 @@
       "mcp__playwright__browser_take_screenshot",
       "mcp__playwright__browser_fill_form",
       "mcp__playwright__browser_wait_for",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(pip install:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm run coverage:*)",
+      "Bash(bandit:*)",
+      "Bash(pylint app:*)",
+      "Bash(pylint worker/app --fail-under=7.0)"
     ]
   },
   "hooks": {
@@ -26,7 +36,25 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/rebuild_hook.sh"
+            "command": ".claude/hooks/api_quality_hook.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/worker_quality_hook.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/frontend_quality_hook.sh"
           }
         ]
       }
