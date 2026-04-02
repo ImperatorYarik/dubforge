@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    MONGO_URI: str = "mongodb://mongodb:27017"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@postgres:5432/video_db"
     S3_ENDPOINT: str = "http://minio:9000"
     # Public URL the browser uses to reach MinIO (rewrite presigned URL host)
     S3_PUBLIC_ENDPOINT: str = "http://localhost:9000"
@@ -15,5 +15,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()

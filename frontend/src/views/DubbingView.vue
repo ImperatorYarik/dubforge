@@ -158,8 +158,51 @@ const stats = computed(() => {
   }
 })
 
+async function tryRecoverActiveJob() {
+  const pid = projectsStore.currentProjectId
+  if (!pid) return
+
+  const cutoff = Date.now() - 2 * 60 * 60 * 1000  // 2 hours
+  const candidates = jobsStore.jobHistory.filter(
+    j => j.projectId === pid && j.startedAt > cutoff
+  )
+
+  for (const job of candidates) {
+    try {
+      const status = await jobsStore.fetchStatus(job.taskId)
+      if (!['PENDING', 'STARTED'].includes(status.state)) continue
+
+      taskId.value = job.taskId
+      videoId.value = job.videoId
+      fileName.value = 'Recovering job…'
+      running.value = true
+      fetchVideoData(job.videoId).catch(() => {})
+
+      jobsStore.connectWS(job.taskId, onProgress)
+        .catch(() => {})
+        .finally(async () => {
+          running.value = false
+          if (!taskId.value) return
+          try {
+            const s = await jobsStore.pollStatus(taskId.value)
+            if (s.state === 'SUCCESS') {
+              result.value = s.result
+              if (videoId.value) {
+                videosApi.getStreamUrl(videoId.value)
+                  .then(({ data }) => { if (result.value) result.value = { ...result.value, original_url: data.url } })
+                  .catch(() => {})
+              }
+            }
+          } catch {}
+          loadAllProjectFiles()
+        })
+      break
+    } catch {}
+  }
+}
+
 // Handle router state (from TranscriptionView "Use for Dubbing" button)
-onMounted(() => {
+onMounted(async () => {
   const state = history.state
   if (state?.videoId) {
     videoId.value = state.videoId
@@ -170,6 +213,7 @@ onMounted(() => {
   }
   projectsStore.fetchProjects()
   loadAllProjectFiles()
+  if (!videoId.value) await tryRecoverActiveJob()
 })
 
 async function loadResultFromVideo(video) {
@@ -298,7 +342,7 @@ async function startJob() {
     // Fetch final result
     if (taskId.value) {
       try {
-        const status = await jobsStore.fetchStatus(taskId.value)
+        const status = await jobsStore.pollStatus(taskId.value)
         if (status.state === 'SUCCESS') {
           result.value = status.result
           // Enrich with original video presigned URL
