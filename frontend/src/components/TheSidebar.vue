@@ -176,5 +176,5 @@ const manageNav = [
 
 
 <style scoped lang="scss">
-@use './TheSidebar';
+@use '../assets/scss/components/TheSidebar';
 </style>

@@ -1,0 +1,46 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.zone {
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 56px 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  background: var(--surface);
+  user-select: none;
+}
+
+.zone:hover, .zone.dragging {
+  border-color: #A1A1AA;
+  background: var(--surface-subtle);
+}
+
+.icon {
+  font-size: 28px;
+  color: var(--text-placeholder);
+  margin-bottom: 12px;
+  line-height: 1;
+}
+
+.label {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.url-row {
+  display: flex;
+  gap: 8px;
+}
+.url-input { flex: 1; }

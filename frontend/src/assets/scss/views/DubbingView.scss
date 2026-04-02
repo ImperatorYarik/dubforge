@@ -421,7 +421,7 @@
   &:hover:not(:disabled) { color: #e05555; border-color: rgb(220,80,80,0.4); }
 }
 
-/* @keyframes spin is defined globally in _animations.scss */
+/* @keyframes spin is defined globally in animations/_keyframes.scss */
 .spinner {
   display: inline-block;
   width: 10px;

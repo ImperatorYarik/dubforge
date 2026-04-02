@@ -1,21 +1,21 @@
 // DubForge global stylesheet
-// Replaces main.css — split into focused partials for maintainability.
+// Split into focused partials for maintainability.
 
 // Design tokens (CSS custom properties — runtime theming, NOT SCSS $variables)
-@use 'scss/tokens';
+@use 'scss/base/tokens';
 
 // Base
-@use 'scss/reset';
-@use 'scss/scrollbar';
+@use 'scss/base/reset';
+@use 'scss/base/scrollbar';
+@use 'scss/base/typography';
 
 // All global @keyframes — available to all components by name
-@use 'scss/animations';
+@use 'scss/animations/keyframes';
 
 // Global utilities
-@use 'scss/transitions';
-@use 'scss/buttons';
-@use 'scss/input';
-@use 'scss/skeleton';
-@use 'scss/badges';
-@use 'scss/typography';
-@use 'scss/panels';
+@use 'scss/animations/transitions';
+@use 'scss/shared/buttons';
+@use 'scss/shared/input';
+@use 'scss/shared/skeleton';
+@use 'scss/shared/badges';
+@use 'scss/shared/panels';
