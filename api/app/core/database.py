@@ -1,9 +1,13 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from app.config import settings
 
-client = AsyncIOMotorClient(settings.MONGO_URI)
+engine = create_async_engine(settings.DATABASE_URL, echo=False, pool_pre_ping=True)
 
-db = client["video_db"]
-
-projects_collection = db["projects"]
-videos_collection = db["videos"]
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False,
+    autocommit=False,
+)

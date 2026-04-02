@@ -81,6 +81,21 @@ export const useJobsStore = defineStore('jobs', () => {
     return data
   }
 
+  // Poll until Celery state is SUCCESS or FAILURE.
+  // Needed because the worker publishes pct=100 to Redis before Celery stores
+  // the result in its backend — a one-shot fetchStatus called immediately after
+  // the WS closes may still see STARTED.
+  async function pollStatus(taskId, maxAttempts = 12, delayMs = 1500) {
+    let status
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const { data } = await jobsApi.getJobStatus(taskId)
+      status = data
+      if (status.state === 'SUCCESS' || status.state === 'FAILURE') return status
+      if (attempt < maxAttempts - 1) await new Promise(r => setTimeout(r, delayMs))
+    }
+    return status
+  }
+
   async function fetchRecentJobs() {
     try {
       const { data } = await jobsApi.getRecentJobs()
@@ -103,6 +118,7 @@ export const useJobsStore = defineStore('jobs', () => {
       const { data } = await jobsApi.transcribeVideo(projectId, videoId, { translate })
       startJob(data.task_id, 'transcribe', videoId, projectId)
       await connectWS(data.task_id, onProgress)
+      await pollStatus(data.task_id)  // persist transcription results to DB
     } catch (e) {
       error.value = e.response?.data?.detail ?? e.message
       throw e
@@ -118,7 +134,7 @@ export const useJobsStore = defineStore('jobs', () => {
       const { data } = await jobsApi.dubVideo(projectId, videoId, options)
       startJob(data.task_id, 'dub', videoId, projectId)
       await connectWS(data.task_id, onProgress)
-      const status = await fetchStatus(data.task_id)
+      const status = await pollStatus(data.task_id)
       return status.result
     } catch (e) {
       error.value = e.response?.data?.detail ?? e.message
@@ -139,7 +155,7 @@ export const useJobsStore = defineStore('jobs', () => {
       const { data } = await jobsApi.separateAudio(projectId, videoId)
       startJob(data.task_id, 'separate', videoId, projectId)
       await connectWS(data.task_id, onProgress)
-      const status = await fetchStatus(data.task_id)
+      const status = await pollStatus(data.task_id)
       return status.result
     } catch (e) {
       error.value = e.response?.data?.detail ?? e.message
@@ -159,6 +175,7 @@ export const useJobsStore = defineStore('jobs', () => {
     connectWS,
     disconnectWS,
     fetchStatus,
+    pollStatus,
     fetchRecentJobs,
     clearJob,
     transcribe,

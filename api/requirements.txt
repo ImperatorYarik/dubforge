@@ -4,9 +4,12 @@ websockets
 python-multipart
 boto3
 yt-dlp
-motor
 pydantic-settings
 celery
 redis
 ffmpeg
 prometheus-fastapi-instrumentator
+sqlalchemy[asyncio]>=2.0
+asyncpg
+alembic
+greenlet

@@ -1,4 +1,5 @@
 import traceback
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,10 +7,18 @@ from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.config import settings
+from app.core.database import engine
 from app.core.storage import storage
 from app.routers import jobs, projects, system, tts, videos
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await engine.dispose()
+
+
+app = FastAPI(lifespan=lifespan)
 
 Instrumentator().instrument(app).expose(app)
 
