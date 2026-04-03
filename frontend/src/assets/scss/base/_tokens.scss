@@ -30,10 +30,10 @@
   --video-bg: #000;
 
   /* Text on dark video backgrounds */
-  --on-video-strong: rgba(255,255,255,0.8);
-  --on-video-mid:    rgba(255,255,255,0.3);
-  --on-video:        rgba(255,255,255,0.25);
-  --on-video-dim:    rgba(255,255,255,0.15);
+  --on-video-strong: rgb(255,255,255,0.8);
+  --on-video-mid:    rgb(255,255,255,0.3);
+  --on-video:        rgb(255,255,255,0.25);
+  --on-video-dim:    rgb(255,255,255,0.15);
 
   /* Compatibility aliases for components using older variable names */
   --color-text: var(--text);
