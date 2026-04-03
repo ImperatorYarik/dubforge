@@ -1,28 +1,106 @@
-.view { padding: 28px 32px; max-width: 900px; }
+/* View-specific overrides — base layout from shared/_view-layout.scss */
 
-.page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; }
-.page-title { font-family: var(--font-display); font-size: 32px; letter-spacing: 0.04em; color: var(--text); }
-.page-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.view {
+  max-width: 900px;
+}
+
+.page-header {
+  align-items: flex-start;
+  margin-bottom: 28px;
+}
 
 /* Create panel */
-.create-panel { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 28px; }
-.create-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
-.tab { padding: 6px 14px; border-radius: var(--radius); font-size: 12px; font-family: var(--font-mono); background: transparent; border: 1px solid var(--border); color: var(--muted); cursor: pointer; }
-.tab:hover { background: var(--bg4); color: var(--text); }
-.tab.active { background: var(--amber-g); border-color: var(--b-amber); color: var(--amber); }
+.create-panel {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  margin-bottom: 28px;
+}
 
-.dropzone { border: 1px dashed var(--border); border-radius: var(--radius-lg); padding: 28px; text-align: center; cursor: pointer; transition: all 0.15s; background: var(--bg4); }
-.dropzone:hover, .dropzone.dragover { border-color: var(--b-amber); background: var(--amber-g); }
-.dz-idle { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); }
-.dz-title { font-size: 13px; color: var(--text); font-weight: 500; }
-.dz-sub { font-size: 11px; }
-.dz-hint { font-size: 12px; color: var(--amber); font-family: var(--font-mono); }
+.create-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
 
-.form-group { display: flex; gap: 10px; }
-.form-group .input { flex: 1; }
+.tab {
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--bg4);
+  color: var(--text);
+}
+
+.tab.active {
+  background: var(--amber-g);
+  border-color: var(--b-amber);
+  color: var(--amber);
+}
+
+.dropzone {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--bg4);
+}
+
+.dropzone:hover,
+.dropzone.dragover {
+  border-color: var(--b-amber);
+  background: var(--amber-g);
+}
+
+.dz-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.dz-title {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.dz-sub {
+  font-size: 11px;
+}
+
+.dz-hint {
+  font-size: 12px;
+  color: var(--amber);
+  font-family: var(--font-mono);
+}
+
+.form-group {
+  display: flex;
+  gap: 10px;
+}
+
+.form-group .input {
+  flex: 1;
+}
 
 /* Project list */
-.projects-list { display: flex; flex-direction: column; gap: 8px; }
+.projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
 .project-card {
   display: flex;
@@ -35,28 +113,109 @@
   cursor: pointer;
   transition: border-color 0.1s, background 0.1s;
 }
-.project-card:hover { border-color: var(--b-amber); background: var(--bg4); }
-.project-card.current { border-color: var(--b-amber); }
-.skeleton-card { min-height: 62px; padding: 16px; cursor: default; }
-.skeleton-card:hover { border-color: var(--border); background: var(--bg3); }
 
-.card-thumb { width: 56px; height: 36px; border-radius: 4px; overflow: hidden; background: var(--bg4); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-.card-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.thumb-fallback { color: var(--dim); }
+.project-card:hover {
+  border-color: var(--b-amber);
+  background: var(--bg4);
+}
 
-.card-body { flex: 1; min-width: 0; }
-.card-name { font-size: 13.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-date { font-size: 11px; color: var(--muted); margin-top: 2px; font-family: var(--font-mono); }
+.project-card.current {
+  border-color: var(--b-amber);
+}
 
-.card-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.action-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 5px; color: var(--muted); background: transparent; border: none; cursor: pointer; opacity: 0; transition: all 0.1s; }
-.project-card:hover .action-btn { opacity: 1; }
-.action-btn:hover { background: var(--red-g); color: var(--red); }
+.skeleton-card {
+  min-height: 62px;
+  padding: 16px;
+  cursor: default;
+}
 
-.search-row { margin-bottom: 16px; }
-.search-input { max-width: 320px; }
+.skeleton-card:hover {
+  border-color: var(--border);
+  background: var(--bg3);
+}
 
-.empty { padding: 56px 0; text-align: center; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.empty-title { font-size: 14px; font-weight: 500; color: var(--text); }
-.empty-sub { font-size: 12px; color: var(--muted); margin-top: -4px; }
-.empty .btn { margin-top: 6px; }
+.card-thumb {
+  width: 56px;
+  height: 36px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg4);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb-fallback {
+  color: var(--dim);
+}
+
+.card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-date {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.1s;
+}
+
+.project-card:hover .action-btn {
+  opacity: 1;
+}
+
+.action-btn:hover {
+  background: var(--red-g);
+  color: var(--red);
+}
+
+.search-row {
+  margin-bottom: 16px;
+}
+
+.search-input {
+  max-width: 320px;
+}
+
+.empty .btn {
+  margin-top: 6px;
+}

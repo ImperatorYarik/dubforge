@@ -26,6 +26,15 @@
   --radius: 6px;
   --radius-lg: 10px;
 
+  /* Video player backgrounds */
+  --video-bg: #000;
+
+  /* Text on dark video backgrounds */
+  --on-video-strong: rgba(255,255,255,0.8);
+  --on-video-mid:    rgba(255,255,255,0.3);
+  --on-video:        rgba(255,255,255,0.25);
+  --on-video-dim:    rgba(255,255,255,0.15);
+
   /* Compatibility aliases for components using older variable names */
   --color-text: var(--text);
   --color-accent: var(--amber);

@@ -1,18 +1,18 @@
 #app { height: 100%; }
 
-.shell {
+.app-shell {
   display: flex;
   min-height: 100vh;
 }
 
-.main-col {
+.app-main-col {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
-.main {
+.app-main {
   flex: 1;
   overflow-y: auto;
 }

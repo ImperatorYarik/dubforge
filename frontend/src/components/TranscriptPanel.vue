@@ -24,7 +24,7 @@ function updateText(i, value) {
 </script>
 
 <template>
-  <div class="panel">
+  <div class="transcript-panel">
     <!-- Skeleton while loading -->
     <template v-if="loading">
       <div v-for="n in 6" :key="n" class="skeleton-row">

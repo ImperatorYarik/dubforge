@@ -21,14 +21,14 @@ onUnmounted(() => {
 
 <template>
   <TopProgressBar />
-  <div class="shell">
+  <div class="app-shell">
     <TheSidebar />
-    <div class="main-col">
+    <div class="app-main-col">
       <TheTopbar />
       <div v-if="!systemStore.workerOnline" class="worker-banner">
         <span>⚠</span> Worker offline — jobs will queue when worker comes online
       </div>
-      <main class="main">
+      <main class="app-main">
         <RouterView v-slot="{ Component }">
           <Transition name="page" mode="out-in">
             <component :is="Component" />
