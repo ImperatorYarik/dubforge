@@ -67,5 +67,5 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || ''
 
 
 <style scoped lang="scss">
-@use './SettingsView';
+@use '../assets/scss/views/SettingsView';
 </style>

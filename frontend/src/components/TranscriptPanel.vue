@@ -24,7 +24,7 @@ function updateText(i, value) {
 </script>
 
 <template>
-  <div class="panel">
+  <div class="transcript-panel">
     <!-- Skeleton while loading -->
     <template v-if="loading">
       <div v-for="n in 6" :key="n" class="skeleton-row">
@@ -57,69 +57,4 @@ function updateText(i, value) {
   </div>
 </template>
 
-<style scoped lang="scss">
-.panel {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  overflow-y: auto;
-}
-
-.skeleton-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-}
-
-.empty {
-  padding: 32px 12px;
-  color: var(--text-placeholder);
-  font-size: 13px;
-  text-align: center;
-}
-
-.seg {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 9px 12px;
-  border-radius: var(--radius);
-  transition: background 0.1s;
-}
-.seg:hover { background: var(--surface-hover); }
-
-.ts {
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-placeholder);
-  padding-top: 2px;
-  flex-shrink: 0;
-  width: 36px;
-}
-
-.seg-text {
-  flex: 1;
-  font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--text);
-  letter-spacing: -0.01em;
-}
-
-textarea.seg-text {
-  background: transparent;
-  border: none;
-  outline: none;
-  resize: none;
-  width: 100%;
-  font-family: var(--font);
-  padding: 0;
-}
-
-textarea.seg-text:focus {
-  background: var(--surface-hover);
-  border-radius: 4px;
-  padding: 4px 6px;
-  margin: -4px -6px;
-}
-</style>
+<style scoped lang="scss">@use '../assets/scss/components/TranscriptPanel';</style>

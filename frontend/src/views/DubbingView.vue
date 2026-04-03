@@ -812,5 +812,5 @@ function formatBytes(b) {
 
 
 <style scoped lang="scss">
-@use './DubbingView';
+@use '../assets/scss/views/DubbingView';
 </style>

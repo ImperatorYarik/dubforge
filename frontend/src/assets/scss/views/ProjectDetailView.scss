@@ -221,7 +221,7 @@
 }
 
 .cell-player {
-  background: #0a0a0a;
+  background: var(--bg);
   border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid var(--border);
@@ -242,7 +242,7 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: rgb(255,255,255,0.25);
+  color: var(--on-video);
   font-size: 12.5px;
   text-align: center;
   padding: 24px;
@@ -250,9 +250,9 @@
 
 .empty-hint {
   font-size: 11.5px;
-  color: rgb(255,255,255,0.15);
+  color: var(--on-video-dim);
 
-  strong { color: rgb(255,255,255,0.3); }
+  strong { color: var(--on-video-mid); }
 }
 
 .player-processing {
@@ -262,7 +262,7 @@
   justify-content: center;
   gap: 12px;
   padding: 24px;
-  color: rgb(255,255,255,0.8);
+  color: var(--on-video-strong);
   text-align: center;
   width: 100%;
 }
@@ -275,7 +275,7 @@
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
-.proc-msg { font-size: 13px; color: rgb(255,255,255,0.7); }
+.proc-msg { font-size: 13px; color: var(--on-video-strong); }
 .proc-pct { font-size: 11px; font-family: var(--font-mono); color: var(--amber); }
 
 .proc-bar {
@@ -298,7 +298,7 @@
   height: 100%;
   display: block;
   object-fit: contain;
-  background: #000;
+  background: var(--video-bg);
 }
 
 /* ── Action Toolbar ── */
@@ -438,7 +438,7 @@
   justify-content: center;
   gap: 10px;
   padding: 48px 24px;
-  color: rgb(255,255,255,0.25);
+  color: var(--on-video);
   font-size: 13px;
   text-align: center;
   background: var(--bg2);
@@ -448,9 +448,9 @@
 
 .tab-empty-hint {
   font-size: 12px;
-  color: rgb(255,255,255,0.15);
+  color: var(--on-video-dim);
 
-  strong { color: rgb(255,255,255,0.3); }
+  strong { color: var(--on-video-mid); }
 }
 
 /* ── Transcript ── */
@@ -612,7 +612,7 @@
   width: 100%;
   height: 100%;
   border-radius: 0;
-  background: #000;
+  background: var(--video-bg);
 }
 
 .cell-player :deep(.player) {

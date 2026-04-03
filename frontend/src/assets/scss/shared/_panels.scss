@@ -7,7 +7,7 @@
 
 /* -------- Progress bar -------- */
 
-/* @keyframes progress-shimmer is defined in _animations.scss */
+/* @keyframes progress-shimmer is defined in animations/_keyframes.scss */
 .progress-bar-indeterminate {
   background: linear-gradient(90deg, var(--amber-d) 0%, var(--amber) 50%, var(--amber-d) 100%);
   background-size: 400px 100%;

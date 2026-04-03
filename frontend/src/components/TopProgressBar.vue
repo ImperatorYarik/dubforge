@@ -17,21 +17,4 @@ const active = computed(() =>
   </div>
 </template>
 
-<style scoped lang="scss">
-.bar-wrap {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  z-index: 9999;
-  pointer-events: none;
-}
-
-.bar {
-  height: 100%;
-  background: var(--accent);
-  animation: load 1.6s ease-in-out infinite;
-}
-
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-</style>
+<style scoped lang="scss">@use '../assets/scss/components/TopProgressBar';</style>

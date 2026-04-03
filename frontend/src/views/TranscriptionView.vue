@@ -354,5 +354,5 @@ function formatBytes(b) {
 
 
 <style scoped lang="scss">
-@use './TranscriptionView';
+@use '../assets/scss/views/TranscriptionView';
 </style>

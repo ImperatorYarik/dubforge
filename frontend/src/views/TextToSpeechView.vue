@@ -245,5 +245,5 @@ function formatTime(s) {
 
 
 <style scoped lang="scss">
-@use './TextToSpeechView';
+@use '../assets/scss/views/TextToSpeechView';
 </style>
