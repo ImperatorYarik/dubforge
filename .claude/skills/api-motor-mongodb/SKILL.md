@@ -32,23 +32,7 @@ await collection.update_one(
 )
 ```
 
-**Prevent duplicate array entries** — use `$push` with `$each` + `$ne` guard (keyed on a unique field like `job_id`):
-```python
-await collection.update_one(
-    {"video_id": video_id},
-    {
-        "$push": {
-            "dubbed_versions": {
-                "$each": [version],
-                "$ne": {"job_id": version["job_id"]}
-            }
-        }
-    }
-)
-```
-> Note: `$ne` is not a valid `$push` modifier — for true duplicate prevention use `$addToSet` on simple values, or check existence first for subdocument arrays. The pattern used in this project is a conditional `$push` guarded by a pre-check or an upsert on the subdocument.
-
-**Practical duplicate-safe push used in this project** (`persist_job_result` pattern):
+**Prevent duplicate array entries** — filter the outer query with `$ne` on the unique key so the push only happens when the entry is absent (`persist_job_result` pattern):
 ```python
 # Only push if job_id not already in array
 await collection.update_one(

@@ -55,7 +55,7 @@ class TestCreateThing:
         with patch("app.routers.things.repo") as mock_repo:
             mock_repo.create = AsyncMock(return_value="abc")
             response = client.post("/things/", json={"name": "test"})
-        assert response.status_code == 200
+        assert response.status_code == 201  # POST endpoints return 201 Created
         assert response.json()["id"] == "abc"
 
     def test_returns_422_on_missing_field(self, client):

@@ -37,7 +37,7 @@ vi.mock('@/api/things', () => ({
 }))
 
 import * as thingsApi from '@/api/things'
-import { useThingsStore } from '../stores/things'
+import { useThingsStore } from '@/stores/things'
 
 describe('useThingsStore', () => {
   beforeEach(() => {
