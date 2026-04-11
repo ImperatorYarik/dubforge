@@ -1,88 +1,324 @@
-.view { padding: 28px 32px; max-width: 1100px; }
+/* -------- TextToSpeechView — Flat Minimalist -------- */
 
-.tts-layout { display: grid; grid-template-columns: 280px 1fr; gap: 24px; align-items: start; }
+.tts-view {
+  padding: 32px 40px;
+  background: var(--color-canvas);
+  min-height: 100%;
 
-/* Voice col */
-.voice-col { min-width: 0; }
-.voice-header { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
-.search-input { padding: 7px 10px; font-size: 12px; }
+  &__header {
+    margin-bottom: 28px;
+  }
 
-.voice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-height: 520px; overflow-y: auto; }
+  &__title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--color-text-primary);
+  }
 
-.voice-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 8px;
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  transition: all 0.1s;
+  &__subtitle {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    margin-top: 4px;
+  }
 
-  &:hover { border-color: var(--b-amber); }
-  &.selected { border-color: var(--amber); background: var(--amber-g); }
+  /* Two-column layout */
+  &__layout {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* Left: input column */
+  &__input-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  &__text-field {
+    position: relative;
+  }
+
+  &__textarea {
+    min-height: 240px;
+    resize: vertical;
+    font-size: 14px;
+    line-height: 1.6;
+    padding-bottom: 28px;
+  }
+
+  &__char-count {
+    position: absolute;
+    bottom: 10px;
+    right: 12px;
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    pointer-events: none;
+
+    &--warn { color: var(--color-danger); }
+  }
+
+  /* Options row */
+  &__options {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  &__option-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  &__option-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+  }
+
+  &__format-toggle {
+    display: flex;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  &__format-btn {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+
+    &:hover { background: var(--color-surface-hover); color: var(--color-text-primary); }
+
+    &--active {
+      background: var(--color-text-primary);
+      color: #FFFFFF;
+    }
+  }
+
+  /* Generate button */
+  &__generate-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  /* Progress */
+  &__progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  &__progress-track {
+    height: 2px;
+    background: var(--color-border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  &__progress-fill {
+    height: 100%;
+    background: var(--color-text-primary);
+    transition: width 0.3s;
+  }
+
+  &__progress-msg {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+  }
+
+  /* Audio result */
+  &__audio-result {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  &__player {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  &__play-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius);
+    background: var(--color-text-primary);
+    color: #FFFFFF;
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: opacity 0.1s;
+
+    &:hover { opacity: 0.85; }
+  }
+
+  &__waveform {
+    flex: 1;
+    height: 4px;
+    background: var(--color-border);
+    border-radius: 2px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+
+  &__waveform-progress {
+    height: 100%;
+    background: var(--color-text-primary);
+    border-radius: 2px;
+    transition: width 0.1s;
+  }
+
+  &__time {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Spinner */
+  &__spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: rgba(255,255,255,0.9);
+    border-radius: 50%;
+    animation: tts-spin 0.6s linear infinite;
+  }
+
+  /* Right: voice column */
+  &__voice-col {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    min-width: 0;
+  }
+
+  &__voice-header {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  &__voice-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  &__voice-selected {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--color-text-primary);
+  }
+
+  &__voice-search {
+    font-size: 12px;
+    padding: 7px 10px;
+  }
+
+  &__voice-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    max-height: 520px;
+    overflow-y: auto;
+  }
+
+  &__voice-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 8px;
+    background: var(--color-canvas);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: border-color 0.1s, background 0.1s;
+
+    &:hover { border-color: var(--color-border-strong); background: var(--color-surface-hover); }
+
+    &--selected {
+      border-color: var(--color-text-primary);
+      background: var(--color-surface-hover);
+    }
+
+    &--skeleton {
+      cursor: default;
+      &:hover { border-color: var(--color-border); background: var(--color-canvas); }
+    }
+  }
+
+  &__voice-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--color-border-strong);
+    color: var(--color-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  &__voice-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    text-align: center;
+    line-height: 1.3;
+    word-break: break-word;
+  }
+
+  &__voice-gender {
+    font-size: 10px;
+    color: var(--color-text-secondary);
+    background: var(--color-canvas);
+    border: 1px solid var(--color-border);
+    border-radius: 2px;
+    padding: 1px 5px;
+  }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    padding: 20px;
+
+    &__layout { grid-template-columns: 1fr; }
+
+    &__voice-col { order: -1; }
+
+    &__voice-grid { max-height: 240px; }
+  }
 }
 
-.voice-avatar {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  color: rgb(255,255,255,0.9);
-  flex-shrink: 0;
+@keyframes tts-spin {
+  to { transform: rotate(360deg); }
 }
-.voice-name { font-size: 10px; font-family: var(--font-mono); color: var(--text); text-align: center; line-height: 1.3; }
-.voice-gender { padding: 1px 5px; font-size: 9px; }
-
-/* Input col */
-.input-col { display: flex; flex-direction: column; gap: 16px; }
-.options-row { display: flex; gap: 20px; align-items: center; }
-.opt-group { display: flex; align-items: center; gap: 10px; }
-.opt-label { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
-.speed-note { font-size: 10px; color: var(--dim); }
-.font-mono { font-family: var(--font-mono); }
-
-.mode-toggle { display: flex; gap: 4px; }
-
-.mode-btn {
-  padding: 4px 10px;
-  border-radius: var(--radius);
-  font-size: 10px;
-  font-family: var(--font-mono);
-  background: var(--bg4);
-  border: 1px solid var(--border);
-  color: var(--muted);
-  cursor: pointer;
-
-  &.active { background: var(--amber-g); border-color: var(--b-amber); color: var(--amber); }
-}
-
-.text-field { position: relative; }
-.textarea { min-height: 200px; resize: vertical; line-height: 1.6; }
-.char-count { position: absolute; bottom: 8px; right: 10px; font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
-.char-count.warn { color: var(--amber); }
-
-.gen-btn { align-self: flex-start; display: flex; align-items: center; gap: 8px; }
-
-/* @keyframes spin is defined globally in animations/_keyframes.scss */
-.spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgb(0,0,0,0.2); border-top-color: #000; border-radius: 50%; animation: spin 0.7s linear infinite; }
-
-.prog-wrap { display: flex; flex-direction: column; gap: 6px; }
-.prog-track { height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; }
-.prog-fill { height: 100%; background: var(--amber); transition: width 0.3s; }
-.prog-msg { font-size: 11px; font-family: var(--font-mono); color: var(--muted); }
-
-/* Audio player */
-.audio-result { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--bg3); border: 1px solid var(--b-teal); border-radius: var(--radius-lg); }
-.player { display: flex; align-items: center; gap: 12px; }
-.play-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--amber); color: #000; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; border: none; }
-.play-btn:hover { opacity: 0.85; }
-.waveform-track { flex: 1; height: 4px; background: var(--bg4); border-radius: 2px; cursor: pointer; overflow: hidden; position: relative; }
-.waveform-progress { height: 100%; background: var(--amber); border-radius: 2px; transition: width 0.1s; }
-.time-display { font-family: var(--font-mono); font-size: 10px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }

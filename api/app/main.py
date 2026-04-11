@@ -15,7 +15,7 @@ from app.routers import jobs, projects, system, tts, videos
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
-    await engine.dispose()
+    await engimpline.dispose()
 
 
 app = FastAPI(lifespan=lifespan)

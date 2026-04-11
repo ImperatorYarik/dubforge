@@ -1,0 +1,201 @@
+/* -------- Dubbing Studio View -------- */
+
+.dubbing-studio {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+
+  /* ---- Top Bar ---- */
+  &__topbar {
+    display: flex;
+    align-items: center;
+    height: var(--topbar-height);
+    flex-shrink: 0;
+    padding: 0 16px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+    z-index: 10;
+  }
+
+  &__project-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  &__project-name {
+    font-family: var(--font-display);
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__tabs {
+    display: flex;
+    gap: 2px;
+  }
+
+  &__tab {
+    padding: 5px 14px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+
+    &--active {
+      background: var(--amber-g);
+      border-color: var(--b-amber);
+      color: var(--amber);
+    }
+
+    &:hover:not(&--active) {
+      color: var(--text);
+    }
+  }
+
+  &__topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  /* ---- Progress bar ---- */
+  &__progress-bar {
+    position: relative;
+    height: 3px;
+    background: var(--bg4);
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  &__progress-fill {
+    height: 100%;
+    background: var(--amber);
+    transition: width 0.3s ease;
+  }
+
+  &__progress-msg {
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--muted);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* ---- Main Workspace ---- */
+  &__workspace {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* ---- Left Panel ---- */
+  &__left {
+    width: var(--sidebar-width);
+    flex-shrink: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---- Center ---- */
+  &__center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+
+  &__player-wrap {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    background: var(--video-bg);
+    overflow: hidden;
+  }
+
+  &__overlay {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    pointer-events: none;
+  }
+
+  &__timecode {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--on-video-strong);
+    background: rgba(0, 0, 0, 0.55);
+    padding: 3px 8px;
+    border-radius: var(--radius);
+    letter-spacing: 0.05em;
+  }
+
+  &__badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #000;
+    background: var(--teal);
+    padding: 3px 8px;
+    border-radius: var(--radius);
+  }
+
+  &__no-video {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__no-video-msg {
+    font-size: 13px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+  }
+
+  &__timeline-wrap {
+    height: 180px;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  /* ---- Right Panel ---- */
+  &__right {
+    width: 280px;
+    flex-shrink: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+}

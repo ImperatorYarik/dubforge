@@ -1,14 +1,22 @@
-/* -------- Shared Input -------- */
+/* -------- Shared Input — Flat Minimalist -------- */
 .input {
   width: 100%;
   padding: 9px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  background: var(--bg3);
-  color: var(--text);
-  outline: none;
-  transition: border-color 0.15s;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 13px;
   font-family: var(--font-body);
+  outline: none;
+  transition: border-color 0.12s;
 }
-.input::placeholder { color: var(--muted); }
-.input:focus { border-color: var(--b-amber); }
+.input::placeholder { color: var(--color-text-placeholder); }
+.input:focus { border-color: var(--color-border-strong); }
+.input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.textarea {
+  resize: vertical;
+  min-height: 160px;
+  line-height: 1.6;
+}

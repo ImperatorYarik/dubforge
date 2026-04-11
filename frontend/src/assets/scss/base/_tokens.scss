@@ -1,44 +1,86 @@
-/* -------- DubForge Design System — Cinema Control Room -------- */
+/* -------- DubForge Design System — Flat Minimalist Light -------- */
 :root {
-  --bg:      #07080a;
-  --bg2:     #0d0e11;
-  --bg3:     #121318;
-  --bg4:     #17181e;
-  --amber:   #e8a020;
-  --amber-d: #a06c10;
-  --amber-g: rgb(232,160,32,0.10);
-  --teal:    #18c5a0;
-  --teal-g:  rgb(24,197,160,0.10);
-  --red:     #e05050;
-  --red-g:   rgb(224,80,80,0.10);
-  --text:    #dedad2;
-  --muted:   #8f8d87;
-  --dim:     #3a3935;
-  --border:  rgb(255,255,255,0.06);
-  --b-amber: rgb(232,160,32,0.18);
-  --b-teal:  rgb(24,197,160,0.18);
-  --b-red:   rgb(224,80,80,0.18);
-  --font-display: 'Bebas Neue', sans-serif;
-  --font-mono:    'JetBrains Mono', monospace;
-  --font-body:    'DM Sans', sans-serif;
+  /* Canvas & Surface */
+  --color-canvas: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #F1F3F4;
+  --color-border: #EAEAEA;
+  --color-border-strong: #D0D0D0;
+
+  /* Text */
+  --color-text-primary: #202124;
+  --color-text-secondary: #5F6368;
+  --color-text-placeholder: #9AA0A6;
+
+  /* Actions */
+  --color-action: #000000;
+  --color-action-text: #FFFFFF;
+  --color-action-hover: #1a1a1a;
+
+  /* Status fills — flat, no shadows */
+  --color-status-draft-bg: #F1F3F4;
+  --color-status-draft-text: #5F6368;
+  --color-status-processing-bg: #5F6368;
+  --color-status-processing-text: #FFFFFF;
+  --color-status-complete-bg: #000000;
+  --color-status-complete-text: #FFFFFF;
+
+  /* Danger */
+  --color-danger: #D93025;
+  --color-danger-bg: #FFF0EE;
+  --color-danger-border: #F5C6C2;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* Typography */
+  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  /* Layout */
   --sidebar-width: 220px;
-  --topbar-height: 50px;
-  --radius: 6px;
-  --radius-lg: 10px;
+  --topbar-height: 56px;
+  --radius: 4px;
+  --radius-md: 6px;
 
-  /* Video player backgrounds */
+  /* Legacy aliases — for components still using old variable names */
+  --bg:      var(--color-canvas);
+  --bg2:     var(--color-surface);
+  --bg3:     #F8F9FA;
+  --bg4:     #F1F3F4;
+  --amber:   #000000;
+  --amber-d: #333333;
+  --amber-g: rgba(0,0,0,0.04);
+  --teal:    #000000;
+  --teal-g:  rgba(0,0,0,0.04);
+  --red:     #D93025;
+  --red-g:   rgba(217,48,37,0.06);
+  --text:    var(--color-text-primary);
+  --muted:   var(--color-text-secondary);
+  --dim:     #BDBDBD;
+  --border:  var(--color-border);
+  --b-amber: var(--color-border-strong);
+  --b-teal:  var(--color-border-strong);
+  --b-red:   var(--color-danger-border);
+  --font-display: var(--font-body);
+  --radius-lg: var(--radius-md);
+
+  /* Video */
   --video-bg: #000;
+  --on-video-strong: rgba(255,255,255,0.9);
+  --on-video-mid:    rgba(255,255,255,0.5);
+  --on-video:        rgba(255,255,255,0.35);
+  --on-video-dim:    rgba(255,255,255,0.2);
 
-  /* Text on dark video backgrounds */
-  --on-video-strong: rgb(255,255,255,0.8);
-  --on-video-mid:    rgb(255,255,255,0.3);
-  --on-video:        rgb(255,255,255,0.25);
-  --on-video-dim:    rgb(255,255,255,0.15);
-
-  /* Compatibility aliases for components using older variable names */
-  --color-text: var(--text);
-  --color-accent: var(--amber);
-  --text-placeholder: var(--muted);
-  --surface-hover: rgb(255,255,255,0.04);
-  --accent: var(--amber);
+  /* Compatibility */
+  --color-text: var(--color-text-primary);
+  --color-accent: #000000;
+  --text-placeholder: var(--color-text-placeholder);
+  --surface-hover: var(--color-surface-hover);
+  --accent: #000000;
 }

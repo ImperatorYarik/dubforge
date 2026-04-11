@@ -6,7 +6,6 @@ import { useVideosStore } from '@/stores/videos'
 import { useJobsStore } from '@/stores/jobs'
 import { useToast } from '@/composables/useToast'
 import VideoPlayer from '@/components/VideoPlayer.vue'
-import TranscriptPanel from '@/components/TranscriptPanel.vue'
 import SkeletonBlock from '@/components/SkeletonBlock.vue'
 import { getDubbedStreamUrl, getVocalsStreamUrl, getNoVocalsStreamUrl, getDubbedVersionStreamUrl, deleteDubbedVersion } from '@/api/videos'
 
@@ -17,33 +16,72 @@ const videosStore   = useVideosStore()
 const jobsStore     = useJobsStore()
 const toast = useToast()
 
-const dubbedDirectUrl  = ref(null)
-const vocalsDirectUrl  = ref(null)
+// Stream URLs
+const dubbedDirectUrl   = ref(null)
+const vocalsDirectUrl   = ref(null)
 const noVocalsDirectUrl = ref(null)
-const translatedSegs   = ref([])
-const isProcessing     = ref(false)
-const progressPct      = ref(0)
-const progressMsg      = ref('')
 
-const transcription   = ref('')
-const translateMode   = ref(false)
-const showRegenMenu   = ref(false)
-const currentJobType  = ref(null)  // 'dub' | 'transcribe' | 'separate' | null
+// Segments & transcript
+const translatedSegs    = ref([])
+const transcription     = ref('')
 
-// Tab navigation
-const activeTab = ref('transcript') // 'transcript' | 'audio' | 'versions'
+// Processing state
+const isProcessing      = ref(false)
+const progressPct       = ref(0)
+const progressMsg       = ref('')
+const currentJobType    = ref(null)  // 'dub' | 'transcribe' | 'separate' | null
 
-// Version management
-const selectedVersionJobId = ref(null)   // null = latest
+// UI state
+const showRegenMenu     = ref(false)
+const videoTab          = ref('original')  // 'original' | 'dubbed'
+const selectedVersionJobId = ref(null)
 const deletingVersionJobId = ref(null)
+const currentSegmentIndex  = ref(-1)
 
+// Derived data
 const dubbedVersions = computed(() => sourceVideo.value?.dubbed_versions ?? [])
 const sortedVersions = computed(() =>
   [...dubbedVersions.value].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 )
 
+// Stepper derived state
 const hasExtractedAudio = computed(() => !!sourceVideo.value?.vocals_url)
 const hasTranscription  = computed(() => !!sourceVideo.value?.transcription || !!transcription.value)
+const hasDub            = computed(() => !!sourceVideo.value?.dubbed_url || !!dubbedDirectUrl.value)
+
+// step1: done if vocals_url, active if video exists and no vocals, locked otherwise
+const step1State = computed(() => {
+  if (!sourceVideo.value) return 'locked'
+  if (hasExtractedAudio.value) return 'done'
+  return 'active'
+})
+
+// step2: done if transcription, active if step1 done, locked otherwise
+const step2State = computed(() => {
+  if (hasTranscription.value) return 'done'
+  if (hasExtractedAudio.value) return 'active'
+  return 'locked'
+})
+
+// step3: done if dubbed_url, active if step2 done, locked otherwise
+const step3State = computed(() => {
+  if (hasDub.value) return 'done'
+  if (hasTranscription.value) return 'active'
+  return 'locked'
+})
+
+// Processing booleans
+const isDubbing      = computed(() => isProcessing.value && currentJobType.value === 'dub')
+const isTranscribing = computed(() => isProcessing.value && currentJobType.value === 'transcribe')
+const isSeparating   = computed(() => isProcessing.value && currentJobType.value === 'separate')
+
+// Project & video
+const project = computed(() =>
+  projectsStore.projects.find(p => p.project_id === route.params.id) ?? null
+)
+const sourceVideo = computed(() =>
+  videosStore.videosForProject(route.params.id)[0] ?? null
+)
 
 function _closeRegenMenu() { showRegenMenu.value = false }
 onBeforeUnmount(() => document.removeEventListener('click', _closeRegenMenu))
@@ -62,10 +100,6 @@ onMounted(async () => {
     translatedSegs.value = _parseSegments(sourceVideo.value.transcription)
   }
   await _loadStreams()
-  // Auto-select best tab
-  if (hasTranscription.value) activeTab.value = 'transcript'
-  else if (hasExtractedAudio.value) activeTab.value = 'audio'
-  else if (sortedVersions.value.length > 1) activeTab.value = 'versions'
 })
 
 async function _loadStreams() {
@@ -99,6 +133,7 @@ async function _loadDubbedStream() {
 async function selectVersion(jobId) {
   selectedVersionJobId.value = jobId
   await _loadDubbedStream()
+  videoTab.value = 'dubbed'
 }
 
 async function deleteVersion(jobId) {
@@ -117,13 +152,6 @@ async function deleteVersion(jobId) {
   }
 }
 
-const project = computed(() =>
-  projectsStore.projects.find(p => p.project_id === route.params.id) ?? null
-)
-const sourceVideo = computed(() =>
-  videosStore.videosForProject(route.params.id)[0] ?? null
-)
-
 watch(sourceVideo, (v) => { if (v) _loadStreams() })
 
 function _parseSegments(text) {
@@ -139,6 +167,54 @@ function onProgress({ pct, message }) {
   progressMsg.value = message
 }
 
+function fmtTimestamp(seconds) {
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function fmtDate(d) {
+  return new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+// --- Actions ---
+
+async function separateAudio() {
+  if (!sourceVideo.value) return
+  isProcessing.value = true
+  currentJobType.value = 'separate'
+  progressPct.value = 0
+  progressMsg.value = 'Starting…'
+  try {
+    const result = await jobsStore.separate(
+      route.params.id,
+      sourceVideo.value.video_id,
+      onProgress,
+    )
+    if (result?.vocals_url) {
+      try {
+        const { data } = await getVocalsStreamUrl(sourceVideo.value.video_id)
+        vocalsDirectUrl.value = data.url
+      } catch { vocalsDirectUrl.value = result.vocals_url }
+    }
+    if (result?.no_vocals_url) {
+      try {
+        const { data } = await getNoVocalsStreamUrl(sourceVideo.value.video_id)
+        noVocalsDirectUrl.value = data.url
+      } catch { noVocalsDirectUrl.value = result.no_vocals_url }
+    }
+    await videosStore.fetchVideo(sourceVideo.value.video_id)
+    toast.success('Audio separation complete')
+  } catch (e) {
+    toast.error('Separation failed: ' + e.message)
+  } finally {
+    isProcessing.value = false
+    currentJobType.value = null
+    progressPct.value = 0
+    progressMsg.value = ''
+  }
+}
+
 async function generateTranscription() {
   if (!sourceVideo.value) return
   isProcessing.value = true
@@ -150,7 +226,7 @@ async function generateTranscription() {
     await jobsStore.transcribe(
       route.params.id,
       sourceVideo.value.video_id,
-      translateMode.value,
+      true,
       onProgress,
     )
     const updated = await videosStore.fetchVideo(sourceVideo.value.video_id)
@@ -158,7 +234,6 @@ async function generateTranscription() {
     translatedSegs.value = updated?.transcript_segments?.length
       ? updated.transcript_segments
       : _parseSegments(transcription.value)
-    activeTab.value = 'transcript'
     toast.success('Transcription complete')
   } catch (e) {
     toast.error('Transcription failed: ' + e.message)
@@ -200,7 +275,7 @@ async function generateDub() {
         : _parseSegments(updated.transcription)
     }
     await _loadStreams()
-    activeTab.value = 'versions'
+    videoTab.value = 'dubbed'
     toast.success('Dubbing complete')
   } catch (e) {
     toast.error('Dubbing failed: ' + e.message)
@@ -243,7 +318,7 @@ async function reDub() {
         : _parseSegments(updated.transcription)
     }
     await _loadStreams()
-    activeTab.value = 'versions'
+    videoTab.value = 'dubbed'
     toast.success('Re-dub complete')
   } catch (e) {
     toast.error('Re-dub failed: ' + e.message)
@@ -255,345 +330,378 @@ async function reDub() {
   }
 }
 
-function reTranscribe() {
+async function fullReDub() {
   showRegenMenu.value = false
-  generateTranscription()
+  generateDub()
 }
 
-const isDubbing      = computed(() => isProcessing.value && currentJobType.value === 'dub')
-const isTranscribing = computed(() => isProcessing.value && currentJobType.value === 'transcribe')
-const isSeparating   = computed(() => isProcessing.value && currentJobType.value === 'separate')
-
-async function separateAudio() {
-  if (!sourceVideo.value) return
-  isProcessing.value = true
-  currentJobType.value = 'separate'
-  progressPct.value = 0
-  progressMsg.value = 'Starting…'
-  try {
-    const result = await jobsStore.separate(
-      route.params.id,
-      sourceVideo.value.video_id,
-      onProgress,
-    )
-    if (result?.vocals_url) {
-      try {
-        const { data } = await getVocalsStreamUrl(sourceVideo.value.video_id)
-        vocalsDirectUrl.value = data.url
-      } catch { vocalsDirectUrl.value = result.vocals_url }
-    }
-    if (result?.no_vocals_url) {
-      try {
-        const { data } = await getNoVocalsStreamUrl(sourceVideo.value.video_id)
-        noVocalsDirectUrl.value = data.url
-      } catch { noVocalsDirectUrl.value = result.no_vocals_url }
-    }
-    await videosStore.fetchVideo(sourceVideo.value.video_id)
-    activeTab.value = 'audio'
-    toast.success('Audio separation complete')
-  } catch (e) {
-    toast.error('Separation failed: ' + e.message)
-  } finally {
-    isProcessing.value = false
-    currentJobType.value = null
-    progressPct.value = 0
-    progressMsg.value = ''
+// Displayed segments — prefer sourceVideo.transcript_segments, fall back to parsed
+const displaySegments = computed(() => {
+  if (sourceVideo.value?.transcript_segments?.length) {
+    return sourceVideo.value.transcript_segments
   }
-}
+  return translatedSegs.value
+})
 
-function fmtDate(d) {
-  return new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
+// Download filename
+const downloadFilename = computed(() => {
+  const name = project.value?.metadata?.title ?? 'dubbed'
+  return `${name.replace(/\s+/g, '_')}_dubbed.mp4`
+})
 </script>
 
 <template>
-  <div class="detail-page">
+  <div class="detail-view">
 
-    <!-- ── Top Bar ──────────────────────────────────────────────── -->
-    <header class="topbar">
-      <div class="topbar-left">
-        <button class="icon-btn" title="Back" @click="router.push({ name: 'projects' })">
+    <!-- Top bar -->
+    <header class="detail-view__topbar">
+      <div class="detail-view__topbar-left">
+        <button
+          class="detail-view__back-btn"
+          data-testid="back-btn"
+          title="Back to projects"
+          @click="router.push({ name: 'projects' })"
+        >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
+          Projects
         </button>
-        <div class="topbar-title-group">
-          <span class="topbar-title">{{ project?.metadata?.title || 'Untitled project' }}</span>
-          <div class="topbar-meta" v-if="sourceVideo">
-            <span v-if="sourceVideo.detected_language" class="meta-badge">{{ sourceVideo.detected_language.toUpperCase() }}</span>
-            <span v-if="sourceVideo.duration_seconds" class="meta-badge meta-badge-dim">{{ Math.round(sourceVideo.duration_seconds) }}s</span>
-            <span v-if="hasTranscription" class="meta-badge meta-badge-ok">Transcribed</span>
-            <span v-if="hasExtractedAudio" class="meta-badge meta-badge-ok">Separated</span>
-            <span v-if="dubbedDirectUrl" class="meta-badge meta-badge-ok">Dubbed</span>
-          </div>
+        <span class="detail-view__topbar-sep">/</span>
+        <span class="detail-view__project-name">{{ project?.metadata?.title || 'Untitled project' }}</span>
+        <div class="detail-view__meta-pills" v-if="sourceVideo">
+          <span v-if="sourceVideo.detected_language" class="detail-view__meta-pill">
+            {{ sourceVideo.detected_language.toUpperCase() }}
+          </span>
+          <span v-if="sourceVideo.duration_seconds" class="detail-view__meta-pill">
+            {{ Math.round(sourceVideo.duration_seconds) }}s
+          </span>
         </div>
       </div>
 
-      <label class="translate-toggle" :class="{ active: translateMode }">
-        <input type="checkbox" v-model="translateMode" :disabled="isProcessing" />
-        Translate
-      </label>
     </header>
 
-    <div class="content">
+    <!-- Workflow Stepper -->
+    <div class="detail-view__stepper" data-testid="workflow-stepper">
 
-      <!-- ── Processing Banner ──────────────────────────────────── -->
-      <div v-if="isProcessing" class="progress-banner">
-        <div class="banner-spinner"></div>
-        <div class="banner-body">
-          <span class="banner-msg">{{ progressMsg || 'Processing…' }}</span>
-          <div class="banner-track">
-            <div class="banner-fill" :style="{ width: progressPct + '%' }"></div>
-          </div>
+      <!-- Step 1: Separate Audio -->
+      <div
+        class="detail-view__stepper-step"
+        :class="`detail-view__stepper-step--${step1State}`"
+        data-testid="step-1"
+      >
+        <div class="detail-view__step-circle">
+          <span v-if="step1State === 'done'" class="detail-view__step-check">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span v-else>1</span>
         </div>
-        <span class="banner-pct">{{ progressPct }}%</span>
+        <span class="detail-view__step-label">Separate Audio</span>
+        <button
+          v-if="step1State === 'active'"
+          class="btn btn-primary btn-sm detail-view__step-action"
+          data-testid="separate-audio-btn"
+          :disabled="isProcessing || !sourceVideo"
+          @click="separateAudio"
+        >
+          <span v-if="isSeparating" class="detail-view__spinner"></span>
+          {{ isSeparating ? progressMsg || 'Separating…' : 'Separate Audio' }}
+        </button>
+        <span v-if="step1State === 'active' && isSeparating" class="detail-view__step-pct">{{ progressPct }}%</span>
       </div>
 
-      <!-- ── Video Comparison ───────────────────────────────────── -->
-      <div class="videos-grid">
+      <span class="detail-view__step-arrow">→</span>
 
-        <!-- Original -->
-        <div class="video-cell">
-          <div class="cell-label">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="3"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
-            Original
-          </div>
-          <div class="cell-player">
-            <div v-if="videosStore.loading" class="player-skeleton"><SkeletonBlock width="100%" height="100%" /></div>
-            <template v-else-if="sourceVideo">
-              <VideoPlayer :video-id="sourceVideo.video_id" />
-            </template>
-            <div v-else class="player-empty">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><rect x="2" y="2" width="20" height="20" rx="3"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/></svg>
-              <p>No video in this project</p>
-            </div>
-          </div>
+      <!-- Step 2: Transcribe -->
+      <div
+        class="detail-view__stepper-step"
+        :class="`detail-view__stepper-step--${step2State}`"
+        data-testid="step-2"
+      >
+        <div class="detail-view__step-circle">
+          <span v-if="step2State === 'done'" class="detail-view__step-check">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span v-else>2</span>
         </div>
-
-        <!-- Dubbed -->
-        <div class="video-cell">
-          <div class="cell-label">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-            Dubbed
-            <span v-if="sortedVersions.length > 0" class="cell-version-tag">
-              {{ selectedVersionJobId ? 'v' + (sortedVersions.length - sortedVersions.findIndex(v => v.job_id === selectedVersionJobId)) : 'Latest' }}
-            </span>
-          </div>
-          <div class="cell-player" :class="{ 'player-active': isDubbing }">
-            <div v-if="isDubbing" class="player-processing">
-              <div class="proc-spinner"></div>
-              <span class="proc-msg">{{ progressMsg || 'Generating dub…' }}</span>
-              <span class="proc-pct">{{ progressPct }}%</span>
-              <div class="proc-bar"><div class="proc-fill" :style="{ width: progressPct + '%' }"></div></div>
-            </div>
-            <template v-else-if="dubbedDirectUrl">
-              <video :src="dubbedDirectUrl" controls class="dubbed-video" />
-            </template>
-            <div v-else class="player-empty">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-              <p>No dubbed video yet</p>
-              <p class="empty-hint">Click <strong>Generate Dub</strong> below</p>
-            </div>
-          </div>
-        </div>
-
+        <span class="detail-view__step-label">Transcribe</span>
+        <button
+          v-if="step2State === 'active'"
+          class="btn btn-primary btn-sm detail-view__step-action"
+          data-testid="transcribe-btn"
+          :disabled="isProcessing || !sourceVideo"
+          @click="generateTranscription"
+        >
+          <span v-if="isTranscribing" class="detail-view__spinner"></span>
+          {{ isTranscribing ? progressMsg || 'Transcribing…' : 'Transcribe' }}
+        </button>
+        <span v-if="step2State === 'active' && isTranscribing" class="detail-view__step-pct">{{ progressPct }}%</span>
       </div>
 
-      <!-- ── Action Toolbar ─────────────────────────────────────── -->
-      <div class="action-bar">
-        <div class="action-bar-left">
-          <button
-            class="btn btn-ghost btn-sm"
-            :disabled="isProcessing || !sourceVideo"
-            @click="separateAudio"
-          >
-            <span v-if="isSeparating" class="spinner spinner-dark" />
-            <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-            Separate Audio
-          </button>
-          <button
-            class="btn btn-ghost btn-sm"
-            :disabled="isProcessing || !sourceVideo"
-            @click="generateTranscription"
-          >
-            <span v-if="isTranscribing" class="spinner spinner-dark" />
-            <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            Transcribe
-          </button>
+      <span class="detail-view__step-arrow">→</span>
+
+      <!-- Step 3: Generate Dub -->
+      <div
+        class="detail-view__stepper-step"
+        :class="`detail-view__stepper-step--${step3State}`"
+        data-testid="step-3"
+      >
+        <div class="detail-view__step-circle">
+          <span v-if="step3State === 'done'" class="detail-view__step-check">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span v-else>3</span>
         </div>
-        <div class="action-bar-right">
-          <div v-if="hasExtractedAudio" class="regen-wrap" @click.stop>
+        <span class="detail-view__step-label">Generate Dub</span>
+
+        <!-- Active: show Generate Dub button -->
+        <button
+          v-if="step3State === 'active'"
+          class="btn btn-primary btn-sm detail-view__step-action"
+          data-testid="generate-dub-btn"
+          :disabled="isProcessing || !sourceVideo"
+          @click="generateDub"
+        >
+          <span v-if="isDubbing" class="detail-view__spinner"></span>
+          {{ isDubbing ? progressMsg || 'Generating…' : 'Generate Dub' }}
+        </button>
+        <span v-if="step3State === 'active' && isDubbing" class="detail-view__step-pct">{{ progressPct }}%</span>
+
+        <!-- Done: show Re-generate split button -->
+        <div v-if="step3State === 'done'" class="detail-view__regen-wrap" @click.stop>
+          <div class="detail-view__regen-split">
             <button
-              class="btn btn-ghost btn-sm regen-btn"
+              class="btn btn-ghost btn-sm detail-view__regen-main"
+              data-testid="regen-btn"
               :disabled="isProcessing"
-              :class="{ active: showRegenMenu }"
               @click="showRegenMenu = !showRegenMenu"
             >
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                <path d="M11 6.5A4.5 4.5 0 1 1 6.5 2H9M9 2l-2 2M9 2l-2-2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              Regenerate
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              Re-generate
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" class="detail-view__regen-caret">
                 <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </button>
-            <div v-if="showRegenMenu" class="regen-menu">
-              <button class="regen-item" @click="reTranscribe">
-                <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M11 6.5A4.5 4.5 0 1 1 6.5 2H9M9 2l-2 2M9 2l-2-2" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Re-transcribe
-              </button>
-              <button class="regen-item" :disabled="!hasTranscription" @click="reDub">
-                <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M11 6.5A4.5 4.5 0 1 1 6.5 2H9M9 2l-2 2M9 2l-2-2" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                Re-dub (keep transcript)
-              </button>
-            </div>
           </div>
-          <button
-            class="btn btn-primary btn-sm"
-            :disabled="isProcessing || !sourceVideo"
-            @click="generateDub"
-          >
-            <span v-if="isDubbing" class="spinner" />
-            <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            Generate Dub
-          </button>
-        </div>
-      </div>
-
-      <!-- ── Tabs ───────────────────────────────────────────────── -->
-      <div class="tabs-bar">
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'transcript' }"
-          @click="activeTab = 'transcript'"
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          Transcript
-          <span v-if="translatedSegs.length" class="tab-count">{{ translatedSegs.length }}</span>
-        </button>
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'audio' }"
-          @click="activeTab = 'audio'"
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-          Audio Tracks
-          <span v-if="hasExtractedAudio" class="tab-dot tab-dot-ok"></span>
-        </button>
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'versions' }"
-          @click="activeTab = 'versions'"
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-          Versions
-          <span v-if="sortedVersions.length" class="tab-count">{{ sortedVersions.length }}</span>
-        </button>
-      </div>
-
-      <!-- ── Tab: Transcript ────────────────────────────────────── -->
-      <div v-if="activeTab === 'transcript'" class="tab-panel">
-        <template v-if="isTranscribing">
-          <TranscriptPanel :segments="[]" :loading="true" />
-        </template>
-        <template v-else-if="translatedSegs.length">
-          <TranscriptPanel :segments="translatedSegs" :editable="true" />
-        </template>
-        <div v-else-if="transcription" class="transcript-raw">
-          <p v-for="(line, i) in transcription.split('\n').filter(l => l.trim())" :key="i">{{ line }}</p>
-        </div>
-        <div v-else class="tab-empty">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          <p>No transcript yet.</p>
-          <p class="tab-empty-hint">Click <strong>Transcribe</strong> to generate one.</p>
-        </div>
-      </div>
-
-      <!-- ── Tab: Audio Tracks ──────────────────────────────────── -->
-      <div v-if="activeTab === 'audio'" class="tab-panel">
-        <template v-if="vocalsDirectUrl || noVocalsDirectUrl || isSeparating">
-          <div class="audio-grid">
-            <div class="audio-cell" v-if="vocalsDirectUrl || isSeparating">
-              <div class="audio-cell-head">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-                <span>Vocals</span>
-              </div>
-              <div v-if="isSeparating" class="audio-skeleton"><SkeletonBlock width="100%" height="40px" /></div>
-              <audio v-else :src="vocalsDirectUrl" controls class="audio-el" />
-            </div>
-            <div class="audio-cell" v-if="noVocalsDirectUrl || isSeparating">
-              <div class="audio-cell-head">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-                <span>Background</span>
-              </div>
-              <div v-if="isSeparating" class="audio-skeleton"><SkeletonBlock width="100%" height="40px" /></div>
-              <audio v-else :src="noVocalsDirectUrl" controls class="audio-el" />
-            </div>
-          </div>
-        </template>
-        <div v-else class="tab-empty">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
-          <p>No audio tracks yet.</p>
-          <p class="tab-empty-hint">Click <strong>Separate Audio</strong> to extract vocals and background.</p>
-        </div>
-      </div>
-
-      <!-- ── Tab: Versions ──────────────────────────────────────── -->
-      <div v-if="activeTab === 'versions'" class="tab-panel">
-        <template v-if="sortedVersions.length">
-          <div class="versions-list">
-            <div
-              v-for="(v, i) in sortedVersions"
-              :key="v.job_id"
-              class="version-row"
-              :class="{ 'version-row-active': selectedVersionJobId === v.job_id || (i === 0 && !selectedVersionJobId) }"
+          <div v-if="showRegenMenu" class="detail-view__regen-menu">
+            <button class="detail-view__regen-item" @click="fullReDub">Full Re-dub</button>
+            <button
+              class="detail-view__regen-item"
+              :disabled="!hasTranscription"
+              @click="reDub"
             >
-              <div class="version-radio">
-                <div class="version-dot" :class="{ 'dot-active': selectedVersionJobId === v.job_id || (i === 0 && !selectedVersionJobId) }"></div>
-              </div>
-              <div class="version-info">
-                <span class="version-label">
-                  v{{ sortedVersions.length - i }}
-                  <span v-if="i === 0" class="version-latest-badge">Latest</span>
-                </span>
-                <span class="version-date">{{ fmtDate(v.created_at) }}</span>
-              </div>
-              <div class="version-actions">
-                <button
-                  class="btn btn-ghost btn-xs version-load-btn"
-                  :class="{ 'btn-active': selectedVersionJobId === v.job_id || (i === 0 && !selectedVersionJobId) }"
-                  :disabled="isProcessing || deletingVersionJobId === v.job_id"
-                  @click="selectVersion(i === 0 ? null : v.job_id)"
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                  Load
-                </button>
-                <button
-                  v-if="i > 0"
-                  class="btn btn-ghost btn-xs version-del-btn"
-                  :disabled="isProcessing || deletingVersionJobId === v.job_id"
-                  @click="deleteVersion(v.job_id)"
-                >
-                  <span v-if="deletingVersionJobId === v.job_id" class="spinner spinner-dark" />
-                  <svg v-else width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                  Delete
-                </button>
-              </div>
-            </div>
+              Re-dub (skip transcription)
+            </button>
           </div>
-        </template>
-        <div v-else class="tab-empty">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <p>No dubbed versions yet.</p>
-          <p class="tab-empty-hint">Click <strong>Generate Dub</strong> to create the first one.</p>
         </div>
       </div>
 
     </div>
+
+    <!-- Body: two-pane layout -->
+    <div class="detail-view__body">
+
+      <!-- Left pane: Video Player (60%) -->
+      <div class="detail-view__player-pane">
+
+        <!-- Progress banner (when processing) -->
+        <div v-if="isProcessing && (isDubbing || isTranscribing || isSeparating)" class="detail-view__progress-banner">
+          <div class="detail-view__progress-spinner"></div>
+          <div class="detail-view__progress-body">
+            <span class="detail-view__progress-msg">{{ progressMsg || 'Processing…' }}</span>
+            <div class="detail-view__progress-track">
+              <div class="detail-view__progress-fill" :style="{ width: progressPct + '%' }"></div>
+            </div>
+          </div>
+          <span class="detail-view__progress-pct">{{ progressPct }}%</span>
+        </div>
+
+        <!-- Original / Dubbed tab bar -->
+        <div class="detail-view__tabs">
+          <button
+            class="detail-view__tab-btn"
+            :class="{ active: videoTab === 'original' }"
+            data-testid="tab-original"
+            @click="videoTab = 'original'"
+          >
+            Original
+          </button>
+          <button
+            class="detail-view__tab-btn"
+            :class="{ active: videoTab === 'dubbed' }"
+            data-testid="tab-dubbed"
+            @click="videoTab = 'dubbed'"
+          >
+            Dubbed
+            <span v-if="sortedVersions.length" class="detail-view__tab-count">{{ sortedVersions.length }}</span>
+          </button>
+        </div>
+
+        <!-- Original tab content -->
+        <template v-if="videoTab === 'original'">
+          <div class="detail-view__video-container">
+            <div v-if="videosStore.loading" class="detail-view__player-skeleton">
+              <SkeletonBlock width="100%" height="100%" />
+            </div>
+            <template v-else-if="sourceVideo">
+              <VideoPlayer :video-id="sourceVideo.video_id" />
+            </template>
+            <div v-else class="detail-view__player-empty">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3">
+                <rect x="2" y="2" width="20" height="20" rx="3"/>
+                <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none"/>
+              </svg>
+              <p>No video in this project</p>
+            </div>
+          </div>
+        </template>
+
+        <!-- Dubbed tab content -->
+        <template v-if="videoTab === 'dubbed'">
+          <!-- Version selector if multiple versions -->
+          <div v-if="sortedVersions.length > 1" class="detail-view__version-selector">
+            <label class="detail-view__version-selector-label">Version</label>
+            <select
+              class="detail-view__version-select"
+              :value="selectedVersionJobId ?? ''"
+              @change="selectVersion($event.target.value || null)"
+            >
+              <option v-for="(v, i) in sortedVersions" :key="v.job_id" :value="i === 0 ? '' : v.job_id">
+                {{ i === 0 ? 'Latest' : 'v' + (sortedVersions.length - i) }} · {{ fmtDate(v.created_at) }}
+              </option>
+            </select>
+          </div>
+
+          <div class="detail-view__video-container">
+            <div v-if="isDubbing" class="detail-view__player-processing">
+              <div class="detail-view__proc-spinner"></div>
+              <span>{{ progressMsg || 'Generating dub…' }}</span>
+              <span class="detail-view__proc-pct">{{ progressPct }}%</span>
+              <div class="detail-view__proc-bar">
+                <div class="detail-view__proc-fill" :style="{ width: progressPct + '%' }"></div>
+              </div>
+            </div>
+            <template v-else-if="dubbedDirectUrl">
+              <video :src="dubbedDirectUrl" controls class="detail-view__dubbed-video" />
+            </template>
+            <div v-else class="detail-view__player-empty" data-testid="no-dubbed-message">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              </svg>
+              <p>No dubbed version yet</p>
+              <p class="detail-view__player-hint">Complete step 3 to generate a dub</p>
+            </div>
+          </div>
+
+          <!-- Download link -->
+          <div v-if="dubbedDirectUrl" class="detail-view__download-bar">
+            <a
+              :href="dubbedDirectUrl"
+              :download="downloadFilename"
+              class="detail-view__download-link"
+              data-testid="download-dubbed-link"
+            >
+              ↓ Download Dubbed MP4
+            </a>
+          </div>
+        </template>
+
+      </div>
+
+      <!-- Right pane: Transcript + Versions (40%) -->
+      <div class="detail-view__transcript-pane" data-testid="transcript-pane">
+
+        <!-- Transcript header -->
+        <div class="detail-view__pane-header">
+          <span class="detail-view__pane-title">TRANSCRIPT</span>
+          <span v-if="displaySegments.length" class="detail-view__pane-count">{{ displaySegments.length }}</span>
+        </div>
+
+        <!-- Segment list -->
+        <div class="detail-view__transcript-list" v-if="displaySegments.length">
+          <div
+            v-for="(seg, i) in displaySegments"
+            :key="i"
+            class="detail-view__segment"
+            :class="{ 'detail-view__segment--active': i === currentSegmentIndex }"
+            data-testid="transcript-segment"
+          >
+            <span class="detail-view__segment-ts" data-testid="segment-timestamp">{{ fmtTimestamp(seg.start) }}</span>
+            <span class="detail-view__segment-text" data-testid="segment-text">{{ seg.text }}</span>
+          </div>
+        </div>
+
+        <!-- Empty transcript state -->
+        <div v-else-if="isTranscribing" class="detail-view__transcript-loading">
+          <SkeletonBlock width="100%" height="32px" />
+          <SkeletonBlock width="80%" height="32px" />
+          <SkeletonBlock width="90%" height="32px" />
+        </div>
+        <div v-else class="detail-view__transcript-empty">
+          <p>No transcript yet.</p>
+          <p class="detail-view__transcript-hint">
+            {{ step1State !== 'done' ? 'Complete step 1 to separate audio first.' : 'Complete step 2 to generate a transcript.' }}
+          </p>
+        </div>
+
+        <!-- Versions section -->
+        <div v-if="sortedVersions.length" class="detail-view__versions" data-testid="versions-section">
+          <div class="detail-view__pane-header detail-view__pane-header--border">
+            <span class="detail-view__pane-title">VERSIONS</span>
+            <span class="detail-view__pane-count">{{ sortedVersions.length }}</span>
+          </div>
+          <div class="detail-view__versions-list">
+            <div
+              v-for="(v, i) in sortedVersions"
+              :key="v.job_id"
+              class="detail-view__version-row"
+              :class="{ 'detail-view__version-row--active': selectedVersionJobId === v.job_id || (i === 0 && !selectedVersionJobId) }"
+            >
+              <div
+                class="detail-view__version-dot"
+                :class="{ 'detail-view__version-dot--active': selectedVersionJobId === v.job_id || (i === 0 && !selectedVersionJobId) }"
+              ></div>
+              <div class="detail-view__version-info">
+                <span class="detail-view__version-label">
+                  <span v-if="i === 0" class="detail-view__version-badge">Latest</span>
+                  <span v-else>v{{ sortedVersions.length - i }}</span>
+                </span>
+                <span class="detail-view__version-date">{{ fmtDate(v.created_at) }}</span>
+              </div>
+              <div class="detail-view__version-actions">
+                <button
+                  class="btn btn-ghost btn-xs"
+                  :disabled="isProcessing || deletingVersionJobId === v.job_id"
+                  @click="selectVersion(i === 0 ? null : v.job_id)"
+                >
+                  Load
+                </button>
+                <button
+                  v-if="i > 0"
+                  class="btn btn-ghost btn-xs detail-view__version-delete"
+                  :disabled="isProcessing || deletingVersionJobId === v.job_id"
+                  @click="deleteVersion(v.job_id)"
+                >
+                  <span v-if="deletingVersionJobId === v.job_id" class="detail-view__spinner detail-view__spinner--dark"></span>
+                  <span v-else>Delete</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </div>
 </template>
 
 <style scoped lang="scss">
 @use '../assets/scss/views/ProjectDetailView';
 </style>
-
