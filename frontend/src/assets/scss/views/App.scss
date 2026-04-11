@@ -3,6 +3,7 @@
 .app-shell {
   display: flex;
   min-height: 100vh;
+  background: var(--color-canvas);
 }
 
 .app-main-col {
@@ -15,4 +16,14 @@
 .app-main {
   flex: 1;
   overflow-y: auto;
+}
+
+/* Worker offline banner */
+.worker-banner {
+  background: #FFF3CD;
+  color: #856404;
+  border-bottom: 1px solid #FFE083;
+  padding: 8px 20px;
+  font-size: 12px;
+  text-align: center;
 }

@@ -37,13 +37,6 @@ function voiceInitials(name) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 }
 
-function voiceColor(name) {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) & 0xffffffff
-  const hue = Math.abs(hash) % 360
-  return `hsl(${hue}, 45%, 28%)`
-}
-
 async function preview(voice) {
   if (previewingVoice.value === voice.name) return
   previewingVoice.value = voice.name
@@ -54,7 +47,6 @@ async function preview(voice) {
       return
     }
     const { data } = await ttsApi.generateTts('Hello, this is a voice preview.', voice.name, 'mp3')
-    // Poll for result
     const result = await pollStatus(data.task_id)
     if (result?.audio_url) {
       previewUrls.value[voice.name] = result.audio_url
@@ -78,7 +70,6 @@ async function pollStatus(taskId) {
 }
 
 function playAudio(name, url) {
-  // Stop all others
   Object.values(previewAudios.value).forEach(a => { a.pause(); a.currentTime = 0 })
   let audio = previewAudios.value[name]
   if (!audio) {
@@ -90,57 +81,76 @@ function playAudio(name, url) {
 </script>
 
 <template>
-  <div class="view">
-    <div class="page-header">
+  <div class="voices-view">
+
+    <div class="voices-view__header">
       <div>
-        <h1 class="page-title">Voice Library</h1>
-        <p class="page-sub">XTTS v2 built-in speakers · Click Preview to hear a sample</p>
+        <h1 class="voices-view__title">Voice Library</h1>
+        <p class="voices-view__subtitle">XTTS v2 built-in speakers — click Preview to hear a sample</p>
       </div>
     </div>
 
-    <!-- Language tabs -->
-    <div class="lang-tabs">
+    <!-- Language filter tabs -->
+    <div class="voices-view__lang-filters" data-testid="lang-filters">
       <button
         v-for="lang in langs"
         :key="lang"
-        :class="['lang-tab', { active: langFilter === lang }]"
+        class="voices-view__lang-tab"
+        :class="{ 'voices-view__lang-tab--active': langFilter === lang }"
         @click="langFilter = lang"
-      >{{ lang }}</button>
+      >
+        {{ lang }}
+      </button>
     </div>
 
-    <!-- Grid -->
-    <div v-if="loading" class="grid">
-      <div v-for="n in 8" :key="n" class="voice-card">
-        <SkeletonBlock width="44px" height="44px" style="border-radius:50%" />
-        <div style="flex:1;display:flex;flex-direction:column;gap:6px;margin-top:4px">
-          <SkeletonBlock width="120px" height="12px" />
-          <SkeletonBlock width="60px" height="10px" />
+    <!-- Loading skeleton -->
+    <div v-if="loading" class="voices-view__grid">
+      <div v-for="n in 8" :key="n" class="voices-view__card voices-view__card--skeleton">
+        <SkeletonBlock width="44px" height="44px" style="border-radius: 50%; flex-shrink: 0" />
+        <div class="voices-view__card-info">
+          <SkeletonBlock width="120px" height="13px" />
+          <SkeletonBlock width="60px" height="11px" style="margin-top: 6px" />
         </div>
       </div>
     </div>
 
-    <div v-else class="grid">
-      <div v-for="v in filtered" :key="v.name" class="voice-card">
-        <div class="voice-avatar" :style="{ background: voiceColor(v.name) }">
-          {{ voiceInitials(v.name) }}
-        </div>
-        <div class="voice-info">
-          <p class="voice-name">{{ v.name }}</p>
-          <p class="voice-gender">{{ v.gender === 'F' ? 'Female' : 'Male' }}</p>
+    <!-- Voices grid -->
+    <div v-else class="voices-view__grid">
+      <div
+        v-for="v in filtered"
+        :key="v.name"
+        class="voices-view__card"
+        data-testid="voice-card"
+      >
+        <div class="voices-view__avatar">{{ voiceInitials(v.name) }}</div>
+        <div class="voices-view__card-info">
+          <p class="voices-view__name">{{ v.name }}</p>
+          <p class="voices-view__gender">{{ v.gender === 'F' ? 'Female' : 'Male' }}</p>
         </div>
         <button
-          class="preview-btn"
-          :class="{ loading: previewingVoice === v.name }"
-          @click="preview(v)"
+          class="btn btn-ghost btn-sm voices-view__preview-btn"
+          :class="{ 'voices-view__preview-btn--loading': previewingVoice === v.name }"
+          data-testid="preview-btn"
           :disabled="!!previewingVoice && previewingVoice !== v.name"
+          @click="preview(v)"
         >
-          <svg v-if="previewingVoice !== v.name" width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          <span v-else class="spinner-sm"></span>
-          {{ previewingVoice === v.name ? '…' : 'Preview' }}
+          <span v-if="previewingVoice === v.name" class="voices-view__spinner"></span>
+          <svg v-else width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          {{ previewingVoice === v.name ? 'Loading…' : 'Preview' }}
         </button>
       </div>
     </div>
+
+    <!-- Empty filtered state -->
+    <div v-if="!loading && filtered.length === 0" class="voices-view__empty">
+      <p>No voices for this language.</p>
+    </div>
+
   </div>
 </template>
 
-<style scoped lang="scss">@use '../assets/scss/views/VoicesView';</style>
+<style scoped lang="scss">
+@use '../assets/scss/views/VoicesView';
+</style>

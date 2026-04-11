@@ -38,6 +38,12 @@ const routes = [
     component: () => import('@/views/VoicesView.vue'),
     meta: { title: 'Voices' },
   },
+  {
+    path: '/studio/:projectId',
+    name: 'dubbing-studio',
+    component: () => import('@/views/DubbingStudioView.vue'),
+    meta: { title: 'Dubbing Studio' },
+  },
 ]
 
 const router = createRouter({
