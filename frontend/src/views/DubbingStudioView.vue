@@ -91,7 +91,7 @@ async function handleGenerateDub(options) {
     toast.success('Dub complete!')
     // Refresh video list to get updated dubbed_url
     await videosStore.fetchVideos()
-  } catch (err) {
+  } catch {
     toast.error(jobsStore.error || 'Dubbing failed.')
   } finally {
     isGenerating.value = false

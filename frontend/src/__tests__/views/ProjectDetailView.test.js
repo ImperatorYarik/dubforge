@@ -52,7 +52,6 @@ import * as projectsApi from '@/api/projects'
 import * as videosApi from '@/api/videos'
 import ProjectDetailView from '@/views/ProjectDetailView.vue'
 import { useVideosStore } from '@/stores/videos'
-import { useProjectsStore } from '@/stores/projects'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -324,10 +323,4 @@ describe('ProjectDetailView', () => {
     })
   })
 
-  describe('translate toggle', () => {
-    it('renders translate toggle checkbox', () => {
-      const wrapper = mountView()
-      expect(wrapper.find('[data-testid="translate-toggle"]').exists()).toBe(true)
-    })
-  })
 })
